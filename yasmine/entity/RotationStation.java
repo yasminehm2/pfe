@@ -22,15 +22,16 @@ public class RotationStation {
     private String stationId;
 
     private Integer stationOrder;
-    private String plannedArrivalTime;
-    private String actualArrivalTime;
-    private Integer etaMinutes;
+
+    // 🚀 ADD THIS FIELD TO FIX THE RED ERRORS IN ETAService
+    @Column(name = "eta_minutes")
+    private Integer etaMinutes; 
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(
             name = "rotation_id",
             referencedColumnName = "id",
-            insertable = false,
+            insertable = false, 
             updatable = false
     )
     @ToString.Exclude
@@ -41,7 +42,7 @@ public class RotationStation {
     @JoinColumn(
             name = "station_id",
             referencedColumnName = "id",
-            insertable = false,
+            insertable = false, 
             updatable = false
     )
     @ToString.Exclude

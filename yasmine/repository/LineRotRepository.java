@@ -13,4 +13,5 @@ public interface LineRotRepository extends JpaRepository<LineRot, LineRotId> {
 
     // Find the line associated with a specific Rotation ID
     List<LineRot> findByRotationId(String rotationId);
+    
 }

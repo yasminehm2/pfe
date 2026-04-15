@@ -3,56 +3,53 @@ package org.yasmine.service;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.yasmine.entity.Rotation;
-import org.yasmine.entity.User;
-import org.yasmine.entity.Vehicle;
-import org.yasmine.repository.RotationRepository;
-import org.yasmine.repository.UserRepository;
-import org.yasmine.repository.VehicleRepository;
-import org.yasmine.exception.TripCancelledException;
-
+import org.yasmine.dto.DisplayInfoDTO;
+import org.yasmine.entity.*;
+import org.yasmine.repository.*;
 import java.util.List;
 import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
 public class TrackingService {
-
-    private final RotationRepository rotationRepository;
+    private final DisplayInfoRepository displayInfoRepository;
+    private final StationService stationService;
     private final UserRepository userRepository;
-    private final VehicleRepository vehicleRepository; // Added to fix GPS retrieval
+    private final RotationRepository rotationRepository;
+    private final VehicleRepository vehicleRepository;
+    private final LineStationRepository lineStationRepository;
 
     /**
-     * Returns rotations for a station that are not cancelled (rannul != '1').
+     * Finds trips shared by all stations on the same line.
      */
-    public List<Rotation> getAvailableRotations(String stationId) {
-        return rotationRepository.findActiveRotationsByStation(stationId);
+    @Transactional(readOnly = true)
+    public List<DisplayInfoDTO> getAvailableRotations(String stationId) {
+        // 1. Identify which Line ID(s) this station belongs to (e.g., 'L1')
+        List<String> associatedLineIds = lineStationRepository.findAll().stream()
+                .filter(ls -> ls.getStation() != null && ls.getStation().getId().equals(stationId))
+                .filter(ls -> ls.getLine() != null)
+                .map(ls -> ls.getLine().getId()) // Returns 'L1'
+                .distinct()
+                .toList();
+
+        if (associatedLineIds.isEmpty()) return List.of();
+
+        // 2. Fetch all trips from 'display' where denumli matches the found Line IDs
+        return displayInfoRepository.findAll().stream()
+                .filter(info -> info.getDenumli() != null && associatedLineIds.contains(info.getDenumli())) 
+                .map(this::mapToDTO)
+                .collect(Collectors.toList());
     }
 
-    /**
-     * Links a Sfax passenger to a specific bus for live tracking.
-     */
-    @Transactional
-    public void activateLiveTracking(String userId, String rotationId) {
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new RuntimeException("User not found"));
-                
-        Rotation rotation = rotationRepository.findById(rotationId)
-                .orElseThrow(() -> new RuntimeException("Rotation not found"));
-
-        if (rotation.isCancelled()) {
-            throw new TripCancelledException();
-        }
-
-        user.setChosenRotation(rotation);
-        userRepository.save(user); 
-    }
-
-    /**
-     * Retrieves the live coordinates from gps_vehic.
-     */
-    public Vehicle getLiveBusPosition(String rotationId) {
-        // Uses the custom JOIN query to find the vehicle by rotation ID
-        return vehicleRepository.findByRotationId(rotationId).orElse(null);
+    private DisplayInfoDTO mapToDTO(DisplayInfo entity) {
+        return DisplayInfoDTO.builder()
+                .id(entity.getId().toString())
+                .lineNumber(entity.getDenumli()) // e.g., 'L1'
+                .busPlate(entity.getVehicule())
+                .departureStation(entity.getDepart())
+                .departureTime(entity.getDepart()) // Map from 'depart' column
+                .arrivalTime(entity.getArrivee())   // Map from 'arrivee' column
+                .arrivalStation(stationService.formatDirectionAsArrival(entity.getDirection()))
+                .build();
     }
 }

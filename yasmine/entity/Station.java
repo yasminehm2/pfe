@@ -2,7 +2,6 @@ package org.yasmine.entity;
 
 import jakarta.persistence.*;
 import lombok.*;
-
 import java.util.ArrayList;
 import java.util.List;
 
@@ -15,7 +14,7 @@ import java.util.List;
 public class Station {
 
     @Id
-    private String id;
+    private String id; // This matches the 'station_id' in DisplayInfo
 
     private String delstat;
     private String delstatfr;
@@ -34,6 +33,7 @@ public class Station {
     @Builder.Default
     private List<RotationStation> rotationStations = new ArrayList<>();
 
+    // 🚀 BIDIRECTIONAL LINK
     @OneToMany(mappedBy = "station", fetch = FetchType.LAZY)
     @ToString.Exclude
     @EqualsAndHashCode.Exclude

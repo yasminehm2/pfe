@@ -25,16 +25,18 @@ public class DisplayInfo {
 
     private String ligne;
     private String direction;
-    private String denumli;
+    private String denumli; // The line number string
     private String deltyli;
     private String delagenc;
 
+    // 🚀 LINK TO STATION
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "station_id")
+    @JoinColumn(name = "station_id", referencedColumnName = "id")
     @ToString.Exclude
     @EqualsAndHashCode.Exclude
     private Station station;
 
+    // Read-only link to Line details
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(
             name = "denumli",

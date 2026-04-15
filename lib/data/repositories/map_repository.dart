@@ -9,7 +9,7 @@ class MapRepository {
 
   MapRepository(this._client);
 
-  /// Fetches stations within a 2km radius of the user's GPS position
+  /// Fetches stations within a larger radius to ensure they appear on the map.
   Future<List<StationModel>> getNearbyStations(double lat, double lon) async {
     try {
       final response = await _client.dio.get(
@@ -17,15 +17,23 @@ class MapRepository {
         queryParameters: {
           'lat': lat,
           'lon': lon,
+          'radius': 10.0, // 🚀 Increased range to 10km to match backend changes
         },
       );
 
       // Maps the List<Station> from Spring Boot to List<StationModel> in Flutter
-      return (response.data as List)
-          .map((json) => StationModel.fromJson(json))
-          .toList();
+      if (response.data != null && response.data is List) {
+        return (response.data as List)
+            .map((json) => StationModel.fromJson(json))
+            .toList();
+      }
+
+      return [];
     } catch (e) {
+      // Log the error to see if it's a 404, 500, or a parsing error
+      print("Repository Error: $e");
       rethrow;
     }
   }
+
 }

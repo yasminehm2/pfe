@@ -87,7 +87,6 @@ class AuthProvider extends ChangeNotifier {
 
       LatLng location = await _getDeviceLocation();
 
-      // 🚀 Make sure 'email' here matches the one used for login
       await _repository.updateUserLocation(
         email: email,
         lat: location.latitude,
@@ -98,7 +97,8 @@ class AuthProvider extends ChangeNotifier {
       return location;
     } catch (e) {
       _errorMessage = "Login failed";
-      return null;
+      notifyListeners(); // 🚀 Important to notify listeners of the error message
+      rethrow; // 🚀 ADD THIS: This triggers the catch block in LoginScreen.dart
     } finally {
       _setLoading(false);
     }
@@ -106,10 +106,32 @@ class AuthProvider extends ChangeNotifier {
 
   Future<LatLng?> continueAsGuest() async {
     _setLoading(true);
+    _errorMessage = null; // Clear previous errors
+
     try {
+      // 1. Authenticate with Spring Boot as a Guest
       _currentUser = await _repository.enterAsGuest();
-      return await _getDeviceLocation();
+
+      // 2. 🚀 Step 2: Get high-accuracy coordinates (Same as Login/Signup)
+      LatLng location = await _getDeviceLocation();
+
+      // 3. 🚀 Step 3: Update the Guest's location in the database
+      // Using the guest's email/ID retrieved from the response
+      if (_currentUser != null) {
+        await _repository.updateUserLocation(
+          email: _currentUser!.email,
+          lat: location.latitude,
+          lon: location.longitude,
+        );
+      }
+
+      notifyListeners();
+      return location; // Return the coordinates to move the map
     } catch (e) {
+      debugPrint("Guest Mode Error: $e");
+      _errorMessage = "Guest access failed. Please check your connection.";
+
+      // Fallback to Sfax if everything fails so the map still opens
       return _sfaxFallback;
     } finally {
       _setLoading(false);
@@ -119,5 +141,19 @@ class AuthProvider extends ChangeNotifier {
   void _setLoading(bool value) {
     _isLoading = value;
     notifyListeners();
+  }
+  /// 🚀 Clears the session and notifies listeners to update the UI
+  void logout() {
+    _currentUser = null;
+    _errorMessage = null;
+    _isLoading = false;
+    _isLoading = false;
+
+    // Optionally: If your repository handles local storage (SharedPreferences/SecureStorage),
+    // call a clear method there too.
+    // await _repository.clearSession();
+
+    notifyListeners();
+    debugPrint("User logged out. Session cleared.");
   }
 }

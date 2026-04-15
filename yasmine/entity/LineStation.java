@@ -10,8 +10,7 @@ import lombok.*;
 @AllArgsConstructor
 @Builder
 public class LineStation {
-
-    @Id
+	@Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
@@ -22,8 +21,6 @@ public class LineStation {
     private String stationId;
 
     private Integer stationOrder;
-    private Double distanceFromOrigin;
-    private String direction;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(

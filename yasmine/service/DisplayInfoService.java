@@ -8,11 +8,10 @@ import java.util.List;
 
 @Service
 @RequiredArgsConstructor
-public class DisplayService {
+public class DisplayInfoService {
     private final DisplayInfoRepository displayInfoRepository;
 
-    public List<DisplayInfo> getScheduleForStation(String stationId) {
-        // Provides line numbers, destinations, and estimated waiting times [cite: 54, 55]
-        return displayInfoRepository.findAll(); 
+    public List<DisplayInfo> getRawDisplayData(String stationId) {
+        return displayInfoRepository.findByStationId(stationId);
     }
 }

@@ -13,4 +13,5 @@ public interface RotationStationRepository extends JpaRepository<RotationStation
      * Supports the "continuously recalculating ETA" requirement.
      */
     List<RotationStation> findByRotationIdOrderByStationOrderAsc(String rotationId);
+    List<RotationStation> findByStationId(String stationId);
 }

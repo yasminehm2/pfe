@@ -10,9 +10,9 @@ class DioClient {
     BaseOptions(
       baseUrl: ApiConstants.baseUrl,
       // 🚀 INCREASED TIMEOUTS: 5s is too short for some GPS/DB lookups
-      connectTimeout: const Duration(seconds: 15),
-      receiveTimeout: const Duration(seconds: 15),
-      sendTimeout: const Duration(seconds: 15),
+      connectTimeout: const Duration(seconds: 40), // Increased from 15
+      receiveTimeout: const Duration(seconds: 40),
+      sendTimeout: const Duration(seconds: 40),
       responseType: ResponseType.json,
       headers: {
         'Content-Type': 'application/json',

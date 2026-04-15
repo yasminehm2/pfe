@@ -81,37 +81,33 @@ class AuthRepository {
       rethrow;
     }
   }
+
   // Inside your AuthRepository class
+  // Replace your existing updateUserLocation with this:
   Future<void> updateUserLocation({
     required String email,
     required double lat,
     required double lon,
   }) async {
     try {
-      // 🚀 Use the constant from your ApiConstants file
-      final url = Uri.parse(ApiConstants.updateLocation);
-
-      final response = await http.patch(
-        url,
-        headers: {"Content-Type": "application/json"},
-        body: jsonEncode({
+      // 🚀 Use the SAME dio client as signup/login
+      await _client.dio.patch(
+        ApiConstants.updateLocation,
+        data: {
           "email": email,
           "lat": lat,
           "lon": lon,
-        }),
-      ).timeout(const Duration(seconds: 10)); // 🚀 Add this to prevent infinite loading
-
-      if (response.statusCode == 200) {
-        print("✅ MySQL Database updated with your specific coordinates.");
-      } else {
-        print("❌ Server error: ${response.statusCode}");
-      }
+        },
+      );
+      debugPrint("✅ Database updated with coordinates.");
+    } on DioException catch (e) {
+      // This allows the error to be logged specifically but doesn't crash the app
+      _handleDioError("Update Location", e);
     } catch (e) {
-      // This catches connection errors (like if Spring Boot is off)
-      print("❌ Connection failed: $e");
+      debugPrint("❌ Location update failed: $e");
     }
   }
-}
+
   /// Helper method to log detailed Dio errors in development
   void _handleDioError(String action, DioException e) {
     debugPrint("---------- Dio Error during $action ----------");
@@ -122,3 +118,4 @@ class AuthRepository {
     }
     debugPrint("-----------------------------------------------");
   }
+}

@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
 import '../../../logic/providers/auth_provider.dart';
 import '../../../logic/providers/map_provider.dart';
-
 
 class SignupScreen extends StatefulWidget {
   const SignupScreen({super.key});
@@ -18,91 +18,97 @@ class _SignupScreenState extends State<SignupScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
 
-  // Inside _SignupScreenState
   Future<void> _handleSignup() async {
     if (!_formKey.currentState!.validate()) return;
 
-    final authProvider = context.read<AuthProvider>();
-    final mapProvider = context.read<MapProvider>(); // 🚀 Access MapProvider
-
-    // 🚀 Trigger Signup and get the resulting location
-    final LatLng? userLocation = await authProvider.signup(
-      name: _nameController.text.trim(),
-      email: _emailController.text.trim(),
-      password: _passwordController.text.trim(),
-    );
-
-    if (!mounted) return;
-
-    if (userLocation != null) {
-      // 🚀 Update the Map center with the new coordinates immediately
-      mapProvider.updateCenter(userLocation);
-
-      // Navigate to the map
-      Navigator.pushReplacementNamed(context, '/map');
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(authProvider.errorMessage ?? "Signup Failed"),
-          backgroundColor: Colors.redAccent,
-        ),
+    try {
+      // We attempt the signup
+      final LatLng? userLocation = await context.read<AuthProvider>().signup(
+        name: _nameController.text.trim(),
+        email: _emailController.text.trim(),
+        password: _passwordController.text.trim(),
       );
+
+      if (!mounted) return;
+
+      if (userLocation != null) {
+        context.read<MapProvider>().updateCenter(userLocation);
+        Navigator.pushNamedAndRemoveUntil(context, '/map', (route) => false);
+      }
+    } catch (e) {
+      // 🚀 Handle the "Email already exists" error here
+      if (mounted) {
+        String errorMessage = "An error occurred. Please try again.";
+
+        // Customize the message based on the error content from your Spring Boot API
+        if (e.toString().contains("409") || e.toString().contains("exists")) {
+          errorMessage = "This email is already registered. Try logging in instead.";
+        }
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(errorMessage),
+            backgroundColor: Colors.redAccent,
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 4),
+            action: SnackBarAction(
+              label: "Login",
+              textColor: Colors.white,
+              onPressed: () => Navigator.pushReplacementNamed(context, '/login'),
+            ),
+          ),
+        );
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final isLoading = context.watch<AuthProvider>().isLoading;
+
     return Scaffold(
-      appBar: AppBar(title: const Text("Sign Up"), centerTitle: true),
-      body: Consumer<AuthProvider>(
-        builder: (context, auth, _) {
-          return SingleChildScrollView(
-            padding: const EdgeInsets.all(24.0),
-            child: Form(
-              key: _formKey,
-              child: Column(
-                children: [
-                  const SizedBox(height: 20),
-                  const Icon(Icons.directions_bus, size: 80, color: Colors.blue),
-                  const SizedBox(height: 30),
-
-                  _buildField(_nameController, "Full Name", Icons.person),
-                  const SizedBox(height: 15),
-                  _buildField(_emailController, "Email", Icons.email),
-                  const SizedBox(height: 15),
-                  _buildField(_passwordController, "Password", Icons.lock, obscure: true),
-
-                  const SizedBox(height: 30),
-
-                  auth.isLoading
-                      ? const CircularProgressIndicator()
-                      : ElevatedButton(
-                    onPressed: _handleSignup,
-                    style: ElevatedButton.styleFrom(
-                      minimumSize: const Size(double.infinity, 50),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                    ),
-                    child: const Text("Create Account"),
-                  ),
-                ],
+      appBar: AppBar(title: const Text("Sign Up")),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(24.0),
+        child: Form(
+          key: _formKey,
+          child: Column(
+            children: [
+              const Icon(Icons.person_add, size: 80, color: Colors.blue),
+              const SizedBox(height: 30),
+              TextFormField(
+                controller: _nameController,
+                decoration: const InputDecoration(labelText: "Full Name"),
+                validator: (val) => val!.isEmpty ? "Please enter your name" : null,
               ),
-            ),
-          );
-        },
+              const SizedBox(height: 15),
+              TextFormField(
+                controller: _emailController,
+                decoration: const InputDecoration(labelText: "Email"),
+                validator: (val) => val == null || !val.contains('@') ? "Invalid email" : null,
+              ),
+              const SizedBox(height: 15),
+              TextFormField(
+                controller: _passwordController,
+                obscureText: true,
+                decoration: const InputDecoration(labelText: "Password"),
+                validator: (val) => val!.length < 6 ? "Password must be at least 6 characters" : null,
+              ),
+              const SizedBox(height: 30),
+              isLoading
+                  ? const CircularProgressIndicator()
+                  : ElevatedButton(
+                onPressed: _handleSignup,
+                style: ElevatedButton.styleFrom(
+                  minimumSize: const Size(double.infinity, 50),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+                child: const Text("Create Account"),
+              ),
+            ],
+          ),
+        ),
       ),
-    );
-  }
-
-  Widget _buildField(TextEditingController controller, String label, IconData icon, {bool obscure = false}) {
-    return TextFormField(
-      controller: controller,
-      obscureText: obscure,
-      decoration: InputDecoration(
-        labelText: label,
-        prefixIcon: Icon(icon),
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-      ),
-      validator: (val) => val == null || val.isEmpty ? "Required" : null,
     );
   }
 }

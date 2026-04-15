@@ -9,10 +9,11 @@ import java.util.List;
 
 @Repository
 public interface RotationRepository extends JpaRepository<Rotation, String> {
-
-    /**
-     * Fetches all rotations for a specific station that are not cancelled (rannul != '1').
-     */
-    @Query("SELECT r FROM Rotation r WHERE r.decstat = :stationId AND r.rannul != '1'")
-    List<Rotation> findActiveRotationsByStation(@Param("stationId") String stationId);
+	@Query("SELECT DISTINCT r FROM Rotation r " +
+	           "JOIN r.lineRots lr " +
+	           "JOIN lr.line l " +
+	           "JOIN l.lineStations ls " +
+	           "WHERE ls.station.id = :stationId " +
+	           "AND (r.rannul IS NULL OR r.rannul <> '1')") // 🚀 Matches your isCancelled() logic
+	    List<Rotation> findRotationsByStationThroughLine(@Param("stationId") String stationId);
 }
