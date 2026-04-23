@@ -30,20 +30,6 @@ public class AuthController {
         ));
     }
 
-    @PatchMapping("/update-location")
-    public ResponseEntity<?> updateLocation(@RequestBody Map<String, Object> locationData) {
-        try {
-            String email = (String) locationData.get("email");
-            Double lat = Double.valueOf(locationData.get("lat").toString());
-            Double lon = Double.valueOf(locationData.get("lon").toString());
-
-            authService.updateUserCoordinates(email, lat, lon);
-            return ResponseEntity.ok(Map.of("message", "Location synced to database"));
-        } catch (Exception e) {
-            return ResponseEntity.status(400).body("Failed to update location: " + e.getMessage());
-        }
-    }
-
     @PostMapping("/guest")
     public ResponseEntity<GuestAccessDTO> enterAsGuest() {
         return ResponseEntity.ok(authService.createGuestSession());

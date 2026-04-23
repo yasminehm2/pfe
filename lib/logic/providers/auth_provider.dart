@@ -1,3 +1,5 @@
+// lib/logic/providers/auth_provider.dart
+
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
@@ -11,7 +13,9 @@ class AuthProvider extends ChangeNotifier {
   bool _isLoading = false;
   String? _errorMessage;
 
-  // Last resort fallback if GPS is totally disabled
+  String? _typedName;
+  String? _typedEmail;
+
   final LatLng _sfaxFallback = const LatLng(34.74, 10.76);
 
   AuthProvider(this._repository);
@@ -21,7 +25,26 @@ class AuthProvider extends ChangeNotifier {
   String? get errorMessage => _errorMessage;
   bool get isAuthenticated => _currentUser != null;
 
-  /// Helper: Fetches high-accuracy coordinates with a 10s timeout
+  bool get isRealUser {
+    if (_currentUser == null || _currentUser!.id.isEmpty) return false;
+    return !_currentUser!.id.toString().toUpperCase().contains("GUEST");
+  }
+
+  String get displayEmail {
+    if (!isRealUser) return "Sfax Public Transport";
+    final backendEmail = _currentUser?.email ?? "";
+    return backendEmail.isNotEmpty ? backendEmail : (_typedEmail ?? "");
+  }
+
+  String get displayName {
+    if (!isRealUser) return "Guest";
+    final backendName = _currentUser?.name ?? "";
+    if (backendName.isNotEmpty && backendName.toLowerCase() != 'guest') return backendName;
+    if (_typedName != null && _typedName!.isNotEmpty) return _typedName!;
+    if (_typedEmail != null && _typedEmail!.contains('@')) return _typedEmail!.split('@')[0];
+    return "Passenger";
+  }
+
   Future<LatLng> _getDeviceLocation() async {
     try {
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
@@ -45,7 +68,6 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
-  // Inside AuthProvider class
   Future<LatLng?> signup({
     required String name,
     required String email,
@@ -54,11 +76,11 @@ class AuthProvider extends ChangeNotifier {
     _setLoading(true);
     _errorMessage = null;
 
-    try {
-      // 🚀 Step 1: Get the high-accuracy coordinates
-      LatLng location = await _getDeviceLocation();
+    _typedName = name;
+    _typedEmail = email;
 
-      // 🚀 Step 2: Send them to Spring Boot during account creation
+    try {
+      LatLng location = await _getDeviceLocation();
       _currentUser = await _repository.signup(
         name: name,
         email: email,
@@ -66,39 +88,43 @@ class AuthProvider extends ChangeNotifier {
         lat: location.latitude,
         lon: location.longitude,
       );
-
       notifyListeners();
-      return location; // 🚀 Return the coordinates (Same as Login)
+      return location;
     } catch (e) {
-      _errorMessage = "Signup failed. Email might already exist.";
+      _errorMessage = "Signup failed.";
       notifyListeners();
-      return null; // Return null if it fails
+      return null;
     } finally {
       _setLoading(false);
     }
   }
 
-// Inside AuthProvider.dart
   Future<LatLng?> login(String email, String password) async {
     _setLoading(true);
+
+    _typedEmail = email;
+    _typedName = null;
+
     try {
       final response = await _repository.login(email, password);
       _currentUser = response;
-
       LatLng location = await _getDeviceLocation();
 
-      await _repository.updateUserLocation(
-        email: email,
-        lat: location.latitude,
-        lon: location.longitude,
-      );
+      // 🚀 UPDATED: Uses ID instead of email
+      if (_currentUser != null) {
+        await _repository.updateUserLocation(
+          userId: _currentUser!.id,
+          lat: location.latitude,
+          lon: location.longitude,
+        );
+      }
 
       notifyListeners();
       return location;
     } catch (e) {
       _errorMessage = "Login failed";
-      notifyListeners(); // 🚀 Important to notify listeners of the error message
-      rethrow; // 🚀 ADD THIS: This triggers the catch block in LoginScreen.dart
+      notifyListeners();
+      rethrow;
     } finally {
       _setLoading(false);
     }
@@ -106,32 +132,28 @@ class AuthProvider extends ChangeNotifier {
 
   Future<LatLng?> continueAsGuest() async {
     _setLoading(true);
-    _errorMessage = null; // Clear previous errors
+    _errorMessage = null;
+
+    _typedName = null;
+    _typedEmail = null;
 
     try {
-      // 1. Authenticate with Spring Boot as a Guest
       _currentUser = await _repository.enterAsGuest();
-
-      // 2. 🚀 Step 2: Get high-accuracy coordinates (Same as Login/Signup)
       LatLng location = await _getDeviceLocation();
 
-      // 3. 🚀 Step 3: Update the Guest's location in the database
-      // Using the guest's email/ID retrieved from the response
+      // 🚀 UPDATED: Uses ID instead of email
       if (_currentUser != null) {
         await _repository.updateUserLocation(
-          email: _currentUser!.email,
+          userId: _currentUser!.id,
           lat: location.latitude,
           lon: location.longitude,
         );
       }
 
       notifyListeners();
-      return location; // Return the coordinates to move the map
+      return location;
     } catch (e) {
-      debugPrint("Guest Mode Error: $e");
-      _errorMessage = "Guest access failed. Please check your connection.";
-
-      // Fallback to Sfax if everything fails so the map still opens
+      _errorMessage = "Guest access failed.";
       return _sfaxFallback;
     } finally {
       _setLoading(false);
@@ -142,17 +164,13 @@ class AuthProvider extends ChangeNotifier {
     _isLoading = value;
     notifyListeners();
   }
-  /// 🚀 Clears the session and notifies listeners to update the UI
+
   void logout() {
     _currentUser = null;
     _errorMessage = null;
+    _typedName = null;
+    _typedEmail = null;
     _isLoading = false;
-    _isLoading = false;
-
-    // Optionally: If your repository handles local storage (SharedPreferences/SecureStorage),
-    // call a clear method there too.
-    // await _repository.clearSession();
-
     notifyListeners();
     debugPrint("User logged out. Session cleared.");
   }

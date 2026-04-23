@@ -1,9 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
-import 'package:geolocator/geolocator.dart';
-import '../../../core/utils/location_helper.dart';
+import 'package:latlong2/latlong.dart';
+import '../../../logic/providers/auth_provider.dart';
 import '../../../logic/providers/map_provider.dart';
 
 class WelcomeScreen extends StatefulWidget {
@@ -14,26 +12,27 @@ class WelcomeScreen extends StatefulWidget {
 }
 
 class _WelcomeScreenState extends State<WelcomeScreen> {
-  bool _isLoading = false;
+  bool _isGuestLoading = false;
 
   Future<void> _handleGuestMode() async {
-    setState(() => _isLoading = true);
+    setState(() => _isGuestLoading = true);
+    final auth = context.read<AuthProvider>();
+    final map = context.read<MapProvider>();
+
     try {
-      Position? position = await LocationHelper.requestLocationPermission();
-      if (position != null) {
-        LatLng myLocation = LatLng(position.latitude, position.longitude);
-        if (mounted) {
-          context.read<MapProvider>().updateCenter(myLocation);
-          // 🚀 Key: RemoveUntil clears the back arrow
-          Navigator.pushNamedAndRemoveUntil(context, '/map', (route) => false);
-        }
-      } else {
-        await SystemNavigator.pop();
+      final LatLng? location = await auth.continueAsGuest();
+
+      if (location != null && mounted) {
+        // 🚀 THE FIX: Wipe the map state before entering
+        map.resetMap();
+        map.updateCenter(location);
+
+        Navigator.pushNamedAndRemoveUntil(context, '/map', (route) => false);
       }
     } catch (e) {
-      await SystemNavigator.pop();
+      debugPrint("Guest login failed: $e");
     } finally {
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted) setState(() => _isGuestLoading = false);
     }
   }
 
@@ -52,19 +51,23 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.bus_alert, size: 80, color: Colors.white),
+            const Icon(Icons.directions_bus, size: 100, color: Colors.white),
             const SizedBox(height: 20),
-            const Text("Sfax Transport", style: TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 60),
-            _buildBtn(context, "Login", Colors.white, Colors.blue, '/login'),
+            const Text("Sfax Transport",
+                style: TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.bold)),
+            const Text("Your city, your rhythm.",
+                style: TextStyle(color: Colors.white70, fontSize: 16)),
+            const SizedBox(height: 80),
+            _buildActionBtn("Login", Colors.white, Colors.blue.shade700, () => Navigator.pushNamed(context, '/login')),
             const SizedBox(height: 15),
-            _buildBtn(context, "Create Account", Colors.blue.shade900, Colors.white, '/signup'),
-            const SizedBox(height: 25),
-            _isLoading
+            _buildActionBtn("Sign Up", Colors.blue.shade900, Colors.white, () => Navigator.pushNamed(context, '/signup')),
+            const SizedBox(height: 30),
+            _isGuestLoading
                 ? const CircularProgressIndicator(color: Colors.white)
                 : TextButton(
               onPressed: _handleGuestMode,
-              child: const Text("Continue as Guest", style: TextStyle(color: Colors.white, decoration: TextDecoration.underline)),
+              child: const Text("Continue as Guest",
+                  style: TextStyle(color: Colors.white, decoration: TextDecoration.underline)),
             ),
           ],
         ),
@@ -72,13 +75,13 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
     );
   }
 
-  Widget _buildBtn(BuildContext context, String text, Color bg, Color textCol, String route) {
+  Widget _buildActionBtn(String label, Color bg, Color text, VoidCallback action) {
     return SizedBox(
       width: 280, height: 55,
       child: ElevatedButton(
-        style: ElevatedButton.styleFrom(backgroundColor: bg, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
-        onPressed: () => Navigator.pushNamed(context, route),
-        child: Text(text, style: TextStyle(color: textCol, fontSize: 18, fontWeight: FontWeight.bold)),
+        style: ElevatedButton.styleFrom(backgroundColor: bg, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))),
+        onPressed: action,
+        child: Text(label, style: TextStyle(color: text, fontSize: 18, fontWeight: FontWeight.bold)),
       ),
     );
   }

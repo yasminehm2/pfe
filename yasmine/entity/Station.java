@@ -27,11 +27,6 @@ public class Station {
     @Builder.Default
     private List<LineStation> lineStations = new ArrayList<>();
 
-    @OneToMany(mappedBy = "station", fetch = FetchType.LAZY, cascade = CascadeType.ALL)
-    @ToString.Exclude
-    @EqualsAndHashCode.Exclude
-    @Builder.Default
-    private List<RotationStation> rotationStations = new ArrayList<>();
 
     // 🚀 BIDIRECTIONAL LINK
     @OneToMany(mappedBy = "station", fetch = FetchType.LAZY)

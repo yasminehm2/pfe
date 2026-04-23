@@ -1,10 +1,11 @@
+// lib/logic/providers/map_provider.dart
+
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:flutter/material.dart';
 import 'package:latlong2/latlong.dart';
-import 'package:dio/dio.dart';
 import 'package:flutter_map/flutter_map.dart';
-import '../../core/constants/api_constants.dart';
+import 'package:shared_preferences/shared_preferences.dart'; // 🚀 IMPORT ADDED
 import '../../data/models/station_model.dart';
 import '../../data/models/rotation_model.dart';
 import '../../data/repositories/map_repository.dart';
@@ -12,19 +13,9 @@ import '../../data/repositories/map_repository.dart';
 class MapProvider extends ChangeNotifier {
   final MapRepository _repository;
 
-  // 🚀 Centralized Dio instance for Spring Boot API
-  final Dio _dio = Dio(BaseOptions(
-    baseUrl: "http://192.168.100.8:8080",
-    connectTimeout: const Duration(seconds: 15),
-    receiveTimeout: const Duration(seconds: 15),
-    headers: {
-      'Content-Type': 'application/json',
-      'Accept': 'application/json',
-    },
-  ));
-
   MapProvider(this._repository);
 
+  // --- State Variables ---
   bool _isLoading = false;
   bool get isLoading => _isLoading;
 
@@ -36,60 +27,139 @@ class MapProvider extends ChangeNotifier {
 
   List<LatLng> _routePoints = [];
   List<LatLng> get routePoints => _routePoints;
-
   set routePoints(List<LatLng> val) {
     _routePoints = val;
     notifyListeners();
   }
 
+  LatLng? _liveBusLocation;
+  LatLng? get liveBusLocation => _liveBusLocation;
+
   List<RotationModel> _selectedStationTrips = [];
   List<RotationModel> get selectedStationTrips => _selectedStationTrips;
+
+  List<StationModel> _currentItinerary = [];
+  List<StationModel> get currentItinerary => _currentItinerary;
+
+  final List<RotationModel> _favoriteTrips = [];
+  List<RotationModel> get favoriteTrips => _favoriteTrips;
 
   LatLng _currentViewCenter = const LatLng(34.727, 10.718);
   LatLng get currentViewCenter => _currentViewCenter;
 
   Function(String, String)? onStationSelected;
 
+  // 🚀 NEW: Tracks whose favorites are currently loaded
+  String? _currentUserId;
+
+  // --- Favourites Logic ---
+
+  // 🚀 NEW: Loads the specific user's saved favorites from the phone
+  Future<void> loadFavorites(String userId) async {
+    _currentUserId = userId;
+    _favoriteTrips.clear();
+
+    // Guests do not get favorites. Exit early.
+    if (userId.toUpperCase().contains('GUEST')) {
+      notifyListeners();
+      return;
+    }
+
+    final prefs = await SharedPreferences.getInstance();
+    final String? favString = prefs.getString('favorites_$userId'); // Fetch by ID
+
+    if (favString != null) {
+      final List decoded = json.decode(favString);
+      _favoriteTrips.addAll(decoded.map((e) => RotationModel.fromJson(e)).toList());
+    }
+    notifyListeners();
+  }
+
+  // 🚀 NEW: Saves the current user's list to the phone
+  Future<void> _saveFavoritesToStorage() async {
+    if (_currentUserId == null || _currentUserId!.toUpperCase().contains('GUEST')) return;
+
+    final prefs = await SharedPreferences.getInstance();
+    final String encoded = json.encode(_favoriteTrips.map((e) => e.toJson()).toList());
+    await prefs.setString('favorites_$_currentUserId', encoded); // Save by ID
+  }
+
+  bool isFavorite(String tripId) {
+    return _favoriteTrips.any((trip) => trip.id == tripId);
+  }
+
+  void toggleFavorite(RotationModel trip) {
+    if (isFavorite(trip.id!)) {
+      _favoriteTrips.removeWhere((t) => t.id == trip.id);
+    } else {
+      _favoriteTrips.add(trip);
+    }
+    _saveFavoritesToStorage(); // 🚀 Persist changes locally instantly
+    notifyListeners();
+  }
+
+  // --- Logic Methods ---
   void updateCenter(LatLng newCenter) {
     _currentViewCenter = newCenter;
     notifyListeners();
   }
 
-  /// 🚀 Fetch Nearby Stations and generate markers
-  // Inside MapProvider.dart
+  void resetMap() {
+    _routePoints = [];
+    _liveBusLocation = null;
+    _currentItinerary = [];
+    _selectedStationTrips = [];
+    _stationMarkers = [];
+    _allStations = [];
+    _favoriteTrips.clear(); // 🚀 CLEAR FAVORITES ON LOGOUT
+    _currentUserId = null; // 🚀 CLEAR USER ID
+    notifyListeners();
+  }
+
+  void clearTrackingVisuals() {
+    _routePoints = [];
+    _liveBusLocation = null;
+    _currentItinerary = [];
+    notifyListeners();
+  }
+
+  void updateBusLocation(double lat, double lon) {
+    _liveBusLocation = LatLng(lat, lon);
+    notifyListeners();
+  }
 
   Future<void> fetchNearbyStations(double lat, double lon) async {
     _isLoading = true;
     notifyListeners();
-
     try {
-      // 1. Call your Spring Boot API (which uses the MapService you just shared)
       final List<StationModel> stationsFromDb = await _repository.getNearbyStations(lat, lon);
+      final String fetchId = DateTime.now().millisecondsSinceEpoch.toString();
 
-      // 2. 🚀 CRITICAL: Clear and Replace.
-      // Do NOT use .add() or .addAll() here, or you will see duplicate/old markers.
-      _stationMarkers = stationsFromDb.map((station) {
+      final List<Marker> newMarkers = stationsFromDb.map((station) {
         return Marker(
+          key: ValueKey("marker_${station.id}_$fetchId"),
           point: LatLng(station.latitude, station.longitude),
-          width: 100,
-          height: 80,
-          child: GestureDetector(
-            onTap: () => onStationSelected?.call(station.id, station.nameFr),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _buildStationLabel(station.nameAr, station.nameFr),
-                const Icon(Icons.location_on, color: Colors.red, size: 35),
-              ],
+          width: 160,
+          height: 120,
+          child: Center(
+            child: GestureDetector(
+              key: ValueKey("tap_${station.id}_$fetchId"),
+              behavior: HitTestBehavior.opaque,
+              onTap: () => onStationSelected?.call(station.id, station.nameFr),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _buildStationLabel(station.nameAr, station.nameFr),
+                  const Icon(Icons.location_on, color: Colors.red, size: 32),
+                ],
+              ),
             ),
           ),
         );
       }).toList();
 
-      // 3. Update your local list for the search/autocomplete feature
+      _stationMarkers = newMarkers;
       _allStations = stationsFromDb;
-
-      debugPrint("📡 Displaying ${_stationMarkers.length} markers from your SQL database.");
     } catch (e) {
       debugPrint("❌ Map Sync Error: $e");
     } finally {
@@ -98,106 +168,89 @@ class MapProvider extends ChangeNotifier {
     }
   }
 
-  /// 🚀 Fetch Real-time trip board for a specific station
   Future<void> fetchTripsForStation(String stationId) async {
     _isLoading = true;
     _selectedStationTrips = [];
     notifyListeners();
-
     try {
-      // 🚀 Changed _client.dio to _dio to match your field name
-      final response = await _dio.get("${ApiConstants.stationTrips}/$stationId/trips");
-
-      if (response.statusCode == 200) {
-        final List data = response.data;
-        _selectedStationTrips = data.map((json) => RotationModel.fromJson(json)).toList();
-      }
+      _selectedStationTrips = await _repository.getTripsForStation(stationId);
     } catch (e) {
-      debugPrint("❌ Trip Board Error: $e");
+      debugPrint("❌ Trip Sync Error: $e");
     } finally {
       _isLoading = false;
       notifyListeners();
     }
   }
 
-  /// 🚀 Fetch OSRM Road-following polyline
-  Future<void> getRoute(LatLng start, LatLng end) async {
+  Future<void> fetchTripItinerary(String rotationId) async {
     _isLoading = true;
-    _routePoints = []; // 🚀 Clear old route immediately
+    _currentItinerary = [];
+    _routePoints = [];
     notifyListeners();
+    try {
+      _currentItinerary = await _repository.getTripItinerary(rotationId);
 
-    // OSRM expects {longitude},{latitude}
-    final url = 'https://router.project-osrm.org/route/v1/driving/'
-        '${start.longitude},${start.latitude};${end.longitude},${end.latitude}'
-        '?overview=full&geometries=geojson';
+      if (_currentItinerary.isNotEmpty) {
+        _liveBusLocation = LatLng(_currentItinerary.first.latitude, _currentItinerary.first.longitude);
+        await _fetchRoadAlignedPath(_currentItinerary);
+      }
+    } catch (e) {
+      debugPrint("❌ Itinerary Sync Error: $e");
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
 
+  Future<void> _fetchRoadAlignedPath(List<StationModel> stations) async {
+    if (stations.length < 2) return;
+    final String coords = stations.map((s) => "${s.longitude},${s.latitude}").join(';');
+    final url = 'https://router.project-osrm.org/route/v1/driving/$coords?overview=full&geometries=geojson';
     try {
       final response = await http.get(Uri.parse(url));
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
-
-        if (data['routes'] != null && data['routes'].isNotEmpty) {
-          final List coordinates = data['routes'][0]['geometry']['coordinates'];
-
-          // OSRM returns [lon, lat], FlutterMap needs [lat, lon]
-          _routePoints = coordinates.map((c) =>
-              LatLng(c[1].toDouble(), c[0].toDouble())
-          ).toList();
-
-          debugPrint("🚀 Route found: ${_routePoints.length} points");
-        } else {
-          debugPrint("⚠️ No route found in OSRM response");
-        }
+        final List coordsList = data['routes'][0]['geometry']['coordinates'];
+        _routePoints = coordsList.map((c) => LatLng(c[1].toDouble(), c[0].toDouble())).toList();
+        notifyListeners();
       }
     } catch (e) {
-      debugPrint("❌ Routing Error: $e");
-    } finally {
-      _isLoading = false;
-      notifyListeners(); // 🚀 This triggers the blue line to draw
+      _routePoints = stations.map((s) => LatLng(s.latitude, s.longitude)).toList();
+      notifyListeners();
     }
   }
+
+  Future<void> getRoute(LatLng start, LatLng end) async {
+    final url = 'https://router.project-osrm.org/route/v1/driving/${start.longitude},${start.latitude};${end.longitude},${end.latitude}?overview=full&geometries=geojson';
+    try {
+      final response = await http.get(Uri.parse(url));
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (data['routes'] != null && data['routes'].isNotEmpty) {
+          final List coords = data['routes'][0]['geometry']['coordinates'];
+          _routePoints = coords.map((c) => LatLng(c[1].toDouble(), c[0].toDouble())).toList();
+          notifyListeners();
+        }
+      }
+    } catch (e) { debugPrint("❌ Routing Error: $e"); }
+  }
+
   Widget _buildStationLabel(String ar, String fr) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(6),
-        boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4)],
-        border: Border.all(color: Colors.blueAccent.withOpacity(0.3)),
-      ),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(6), boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4)]),
       child: Column(
         children: [
-          Text(ar, style: const TextStyle(fontSize: 9, fontWeight: FontWeight.bold), textDirection: TextDirection.rtl),
+          Text(ar, style: const TextStyle(fontSize: 9, fontWeight: FontWeight.bold)),
           Text(fr, style: const TextStyle(fontSize: 8, color: Colors.blueAccent)),
         ],
       ),
     );
   }
-// lib/logic/providers/map_provider.dart
 
-  List<StationModel> _currentItinerary = [];
-  List<StationModel> get currentItinerary => _currentItinerary;
-
-  Future<void> fetchTripItinerary(String rotationId) async {
-    _isLoading = true;
-    _currentItinerary = []; // Clear previous itinerary
-    notifyListeners();
-
-    try {
-      // 🚀 Using your existing _dio instance
-      final response = await _dio.get("/api/stations/trips/$rotationId/itinerary");
-
-      if (response.statusCode == 200) {
-        final List data = response.data;
-        // Map the StationResponseDTOs from backend to your StationModel
-        _currentItinerary = data.map((json) => StationModel.fromJson(json)).toList();
-        debugPrint("🛤️ Loaded ${_currentItinerary.length} stops for trip $rotationId");
-      }
-    } catch (e) {
-      debugPrint("❌ Itinerary Fetch Error: $e");
-    } finally {
-      _isLoading = false;
-      notifyListeners();
-    }
+  @override
+  void dispose() {
+    onStationSelected = null;
+    super.dispose();
   }
 }

@@ -85,26 +85,21 @@ class AuthRepository {
   // Inside your AuthRepository class
   // Replace your existing updateUserLocation with this:
   Future<void> updateUserLocation({
-    required String email,
+    required String userId,
     required double lat,
     required double lon,
   }) async {
     try {
-      // 🚀 Use the SAME dio client as signup/login
       await _client.dio.patch(
-        ApiConstants.updateLocation,
+        "${ApiConstants.updateUserLocation}/$userId/location",
         data: {
-          "email": email,
           "lat": lat,
           "lon": lon,
         },
       );
       debugPrint("✅ Database updated with coordinates.");
     } on DioException catch (e) {
-      // This allows the error to be logged specifically but doesn't crash the app
       _handleDioError("Update Location", e);
-    } catch (e) {
-      debugPrint("❌ Location update failed: $e");
     }
   }
 

@@ -5,6 +5,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.yasmine.dto.DisplayInfoDTO;
 import org.yasmine.dto.StationResponseDTO;
+import org.yasmine.service.DisplayInfoService;
 import org.yasmine.service.StationService;
 import org.yasmine.service.TrackingService;
 
@@ -17,7 +18,7 @@ import java.util.List;
 public class StationController {
 
     private final StationService stationService;
-    private final TrackingService trackingService;
+    private final DisplayInfoService displayInfoService;
 
     /**
      * Finds stations within a specific radius of the user.
@@ -35,7 +36,8 @@ public class StationController {
      */
     @GetMapping("/{stationId}/trips")
     public ResponseEntity<List<DisplayInfoDTO>> getTripsForStation(@PathVariable String stationId) {
-        List<DisplayInfoDTO> rotations = trackingService.getAvailableRotations(stationId);
+        // 🚀 Now uses DisplayInfoService instead of TrackingService
+        List<DisplayInfoDTO> rotations = displayInfoService.getAvailableRotations(stationId);
         return ResponseEntity.ok(rotations);
     }
     

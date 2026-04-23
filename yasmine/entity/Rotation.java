@@ -48,12 +48,6 @@ public class Rotation {
     @Builder.Default
     private List<LineRot> lineRots = new ArrayList<>();
 
-    @OneToMany(mappedBy = "rotation", fetch = FetchType.LAZY, cascade = CascadeType.ALL)
-    @ToString.Exclude
-    @EqualsAndHashCode.Exclude
-    @Builder.Default
-    private List<RotationStation> rotationStations = new ArrayList<>();
-
     @OneToMany(mappedBy = "chosenRotation", fetch = FetchType.LAZY)
     @ToString.Exclude
     @EqualsAndHashCode.Exclude

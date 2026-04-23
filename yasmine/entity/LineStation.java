@@ -10,7 +10,7 @@ import lombok.*;
 @AllArgsConstructor
 @Builder
 public class LineStation {
-	@Id
+    @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
@@ -20,6 +20,7 @@ public class LineStation {
     @Column(name = "station_id", nullable = false)
     private String stationId;
 
+    @Column(name = "station_order")
     private Integer stationOrder;
 
     @ManyToOne(fetch = FetchType.LAZY)
@@ -33,7 +34,8 @@ public class LineStation {
     @EqualsAndHashCode.Exclude
     private Line line;
 
-    @ManyToOne(fetch = FetchType.LAZY)
+    // 🚀 CHANGE: Changed from LAZY to EAGER to ensure names are loaded
+    @ManyToOne(fetch = FetchType.EAGER) 
     @JoinColumn(
             name = "station_id",
             referencedColumnName = "id",

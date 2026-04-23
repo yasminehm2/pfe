@@ -25,7 +25,7 @@ public class StationService {
     private final DisplayInfoRepository displayInfoRepository;
 
     /**
-     * ✅ FIX FOR RotationService: Converts String coordinates (with commas) to double
+     * Converts String coordinates (potentially with commas) to double.
      */
     public double parseCoordinate(String coord) {
         if (coord == null || coord.trim().isEmpty()) return 0.0;
@@ -38,26 +38,23 @@ public class StationService {
     }
 
     /**
-     * ✅ FIX FOR TrackingService: Cleans the direction string for display
+     * Cleans direction strings (e.g., "Direction: Sfax-Sud") for the UI.
      */
     public String formatDirectionAsArrival(String direction) {
         if (direction == null || direction.isBlank()) return "Terminus";
-        
         String cleaned = direction.replaceAll("(?i)^(Direction|Vers|Ligne)[:\\s]*", "").trim();
-        
         if (cleaned.contains("-")) {
             String[] parts = cleaned.split("-");
             cleaned = parts[parts.length - 1].trim();
         }
-        
         return cleaned;
     }
 
     /**
-     * Haversine formula for distance calculation
+     * Haversine formula for distance calculation in kilometers.
      */
     public double calculateDistance(double lat1, double lon1, double lat2, double lon2) {
-        double earthRadius = 6371; // km
+        double earthRadius = 6371; 
         double dLat = Math.toRadians(lat2 - lat1);
         double dLon = Math.toRadians(lon2 - lon1);
         double a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
@@ -89,23 +86,33 @@ public class StationService {
                 .collect(Collectors.toList());
     }
 
+    /**
+     * Retrieves the sequence of stops for a trip ID from the display table.
+     * Maps: Display ID (e.g., 4) -> Line Name (L1) -> Line Stations.
+     */
     public List<StationResponseDTO> getItineraryByRotation(String rotationId) {
-        // 1. Find the trip in the display table by its ID (e.g., 4) to get its Line Name (L1)
-        String lineId = displayInfoRepository.findById(Long.parseLong(rotationId))
-                .map(DisplayInfo::getDenumli) // Gets 'L1'
+        Long id = Long.parseLong(rotationId);
+        String lineId = displayInfoRepository.findById(id)
+                .map(DisplayInfo::getDenumli) 
                 .orElse(null);
 
         if (lineId == null) return List.of();
 
-        // 2. Return all stations mapped to 'L1' in line_station table
         return lineStationRepository.findByLineIdOrderByStationOrderAsc(lineId).stream()
-                .map(ls -> StationResponseDTO.builder()
-                        .id(ls.getStation().getId())
-                        .nameAr(ls.getStation().getDelstat())
-                        .nameFr(ls.getStation().getDelstatfr())
-                        .latitude(parseCoordinate(ls.getStation().getLatitude()))
-                        .longitude(parseCoordinate(ls.getStation().getLongitude()))
-                        .build())
+                .map(ls -> {
+                    // This 'getStation()' now works because of the EAGER fetch
+                    Station s = ls.getStation();
+                    if (s == null) return null;
+                    
+                    return StationResponseDTO.builder()
+                            .id(s.getId())
+                            .nameAr(s.getDelstat())   // Arabic name from DB
+                            .nameFr(s.getDelstatfr()) // French name from DB
+                            .latitude(parseCoordinate(s.getLatitude()))
+                            .longitude(parseCoordinate(s.getLongitude()))
+                            .build();
+                })
+                .filter(java.util.Objects::nonNull)
                 .collect(Collectors.toList());
     }
-}
+    }

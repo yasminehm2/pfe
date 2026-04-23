@@ -18,5 +18,5 @@ public interface DisplayInfoRepository extends JpaRepository<DisplayInfo, Long> 
     /**
      * Optional: If you still need to filter based on the Line's relationship
      */
-    List<DisplayInfo> findByDenumliAndStationId(String denumli, String stationId);
+    List<DisplayInfo> findByDenumliIn(List<String> lineNumbers);
 }

@@ -1,11 +1,11 @@
 class ApiConstants {
-  static const String baseUrl = "http://192.168.100.8:8080/api";
+  static const String baseUrl = "http://10.26.12.7:8080/api";
 
   // Auth Endpoints (AuthController)
   static const String login = "$baseUrl/auth/login";
   static const String signup = "$baseUrl/auth/signup";
   static const String guest = "$baseUrl/auth/guest";
-  static const String updateLocation = "$baseUrl/auth/update-location";
+  static const String updateUserLocation = "$baseUrl/users";
 
   // Station Endpoints (StationController)
   static const String nearbyStations = "$baseUrl/stations/nearby";

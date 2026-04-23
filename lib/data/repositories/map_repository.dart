@@ -1,15 +1,17 @@
 // lib/data/repositories/map_repository.dart
 
+import 'package:flutter/foundation.dart';
 import '../../core/network/dio_client.dart';
 import '../../core/constants/api_constants.dart';
 import '../models/station_model.dart';
+import '../models/rotation_model.dart';
 
 class MapRepository {
   final DioClient _client;
 
   MapRepository(this._client);
 
-  /// Fetches stations within a larger radius to ensure they appear on the map.
+  /// Fetches stations within a specific radius of the user's location.
   Future<List<StationModel>> getNearbyStations(double lat, double lon) async {
     try {
       final response = await _client.dio.get(
@@ -17,23 +19,53 @@ class MapRepository {
         queryParameters: {
           'lat': lat,
           'lon': lon,
-          'radius': 10.0, // 🚀 Increased range to 10km to match backend changes
+          'radius': 10.0, // Matches the 10km range we established
         },
       );
 
-      // Maps the List<Station> from Spring Boot to List<StationModel> in Flutter
       if (response.data != null && response.data is List) {
         return (response.data as List)
             .map((json) => StationModel.fromJson(json))
             .toList();
       }
-
       return [];
     } catch (e) {
-      // Log the error to see if it's a 404, 500, or a parsing error
-      print("Repository Error: $e");
+      debugPrint("❌ MapRepository (getNearbyStations) Error: $e");
       rethrow;
     }
   }
 
+  /// Fetches all active bus trips passing through a specific station.
+  Future<List<RotationModel>> getTripsForStation(String stationId) async {
+    try {
+      final response = await _client.dio.get("${ApiConstants.stationTrips}/$stationId/trips");
+
+      if (response.data != null && response.data is List) {
+        return (response.data as List)
+            .map((json) => RotationModel.fromJson(json))
+            .toList();
+      }
+      return [];
+    } catch (e) {
+      debugPrint("❌ MapRepository (getTripsForStation) Error: $e");
+      rethrow;
+    }
+  }
+
+  /// Fetches the sequential itinerary (stops) for a specific trip.
+  Future<List<StationModel>> getTripItinerary(String rotationId) async {
+    try {
+      final response = await _client.dio.get("${ApiConstants.stationTrips}/trips/$rotationId/itinerary");
+
+      if (response.data != null && response.data is List) {
+        return (response.data as List)
+            .map((json) => StationModel.fromJson(json))
+            .toList();
+      }
+      return [];
+    } catch (e) {
+      debugPrint("❌ MapRepository (getTripItinerary) Error: $e");
+      rethrow;
+    }
+  }
 }

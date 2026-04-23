@@ -8,4 +8,5 @@ import java.util.List;
 @Repository
 public interface LineStationRepository extends JpaRepository<LineStation, Long> {
     List<LineStation> findByLineIdOrderByStationOrderAsc(String lineId);
+    List<LineStation> findByStationId(String stationId);
 }

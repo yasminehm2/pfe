@@ -1,48 +1,73 @@
 // lib/ui/screens/map/trip_list_sheet.dart
-
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../logic/providers/map_provider.dart';
 import '../../../logic/providers/auth_provider.dart';
+import '../../../logic/providers/tracking_provider.dart';
 import '../../../data/models/rotation_model.dart';
-import '../../../data/models/user_model.dart';
 
 class TripListSheet extends StatefulWidget {
   final String stationName;
-  const TripListSheet({super.key, required this.stationName});
+  final String stationId;
+
+  const TripListSheet({super.key, required this.stationName, required this.stationId});
 
   @override
   State<TripListSheet> createState() => _TripListSheetState();
 }
 
 class _TripListSheetState extends State<TripListSheet> {
-  RotationModel? _selectedTrip; // null = List view, not null = Detail/Itinerary view
+  RotationModel? _selectedTrip;
+
+  @override
+  void didUpdateWidget(TripListSheet oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.stationName != widget.stationName) {
+      _selectedTrip = null;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final mapProvider = context.watch<MapProvider>();
     final authProvider = context.watch<AuthProvider>();
 
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 300),
-      height: MediaQuery.of(context).size.height * 0.75,
+    return Container(
+      height: MediaQuery.of(context).size.height * 0.80,
       decoration: const BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-        boxShadow: [
-          BoxShadow(color: Colors.black12, blurRadius: 10, spreadRadius: 2),
-        ],
+        borderRadius: BorderRadius.vertical(top: Radius.circular(25)),
       ),
       child: Column(
         children: [
-          _buildHandle(),
-          // Toggle Header based on view state
-          _buildHeader(
-            _selectedTrip == null ? widget.stationName : "Line ${_selectedTrip!.lineNumber} Itinerary",
-            isDetail: _selectedTrip != null,
+          const SizedBox(height: 12),
+          Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                  color: Colors.grey[300],
+                  borderRadius: BorderRadius.circular(10)
+              )
           ),
-          const Divider(height: 1),
-
+          ListTile(
+            leading: _selectedTrip != null
+                ? IconButton(
+                icon: const Icon(Icons.arrow_back),
+                onPressed: () => setState(() => _selectedTrip = null)
+            )
+                : const Icon(Icons.location_on, color: Colors.red),
+            title: Text(
+              _selectedTrip == null
+                  ? widget.stationName
+                  : "Line ${_selectedTrip!.lineNumber} Itinerary",
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+            trailing: IconButton(
+                icon: const Icon(Icons.close),
+                onPressed: () => Navigator.pop(context)
+            ),
+          ),
+          const Divider(),
           Expanded(
             child: _selectedTrip == null
                 ? _buildListView(mapProvider)
@@ -53,273 +78,197 @@ class _TripListSheetState extends State<TripListSheet> {
     );
   }
 
-  // --- VIEW 1: TRIP LIST ---
   Widget _buildListView(MapProvider provider) {
-    if (provider.isLoading) {
-      return const Center(child: CircularProgressIndicator(color: Colors.blueAccent));
-    }
-
+    if (provider.isLoading) return const Center(child: CircularProgressIndicator());
     if (provider.selectedStationTrips.isEmpty) {
-      return _buildEmptyState("No active trips for this line group.");
+      return const Center(child: Text("No active buses for this line."));
     }
 
-    return ListView.separated(
-      padding: const EdgeInsets.all(16),
+    return ListView.builder(
+      padding: const EdgeInsets.all(15),
       itemCount: provider.selectedStationTrips.length,
-      separatorBuilder: (_, __) => const SizedBox(height: 12),
       itemBuilder: (context, index) {
         final trip = provider.selectedStationTrips[index];
-        return _TripTile(
-          trip: trip,
-          onSelect: (selected) {
-            setState(() => _selectedTrip = selected);
-            provider.fetchTripItinerary(selected.id!); // Trigger backend itinerary fetch
-          },
+        return Card(
+          elevation: 2,
+          margin: const EdgeInsets.only(bottom: 10),
+          child: ListTile(
+            onTap: () {
+              setState(() => _selectedTrip = trip);
+              provider.fetchTripItinerary(trip.id!);
+            },
+            leading: CircleAvatar(
+              backgroundColor: Colors.blue[900],
+              child: Text(
+                  trip.lineNumber ?? "?",
+                  style: const TextStyle(color: Colors.white, fontSize: 12)
+              ),
+            ),
+            title: Text("${trip.departureTime} → ${trip.arrivalTime}"),
+            subtitle: Text("Bus: ${trip.busPlate}"),
+            trailing: const Icon(Icons.chevron_right),
+          ),
         );
       },
     );
   }
 
-  // --- VIEW 2: TRIP DETAILS & ITINERARY ---
   Widget _buildDetailView(RotationModel trip, MapProvider provider, AuthProvider auth) {
+    final bool isAuthenticated = auth.currentUser != null;
+    final bool isGuest = isAuthenticated && auth.currentUser!.id.toString().toUpperCase().contains('GUEST');
+    final bool isRealUser = isAuthenticated && !isGuest;
+
     return Column(
       children: [
         Expanded(
           child: ListView(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
+            padding: const EdgeInsets.symmetric(horizontal: 20),
             children: [
-              _buildMetricTile(Icons.directions_bus, "Bus Plate", trip.busPlate ?? "N/A"),
-              _buildMetricTile(Icons.timer_outlined, "Schedule",
-                  "${trip.departureTime ?? '--:--'} → ${trip.arrivalTime ?? '--:--'}"),
-              const SizedBox(height: 20),
-              const Text(
-                "STOPS SEQUENCE",
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.blueAccent, letterSpacing: 1.1),
+              const SizedBox(height: 10),
+              _buildTripInfoSummary(trip, provider, isRealUser),
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 20),
+                child: Text(
+                    "STOPS SEQUENCE",
+                    style: TextStyle(color: Colors.blue, fontWeight: FontWeight.bold, letterSpacing: 1.2)
+                ),
               ),
-              const SizedBox(height: 15),
-
               if (provider.isLoading)
-                const Center(child: Padding(
-                  padding: EdgeInsets.all(20.0),
-                  child: LinearProgressIndicator(),
-                ))
+                const Center(child: LinearProgressIndicator())
+              else if (provider.currentItinerary.isEmpty)
+                const Center(child: Text("Itinerary data unavailable."))
               else
                 ...provider.currentItinerary.asMap().entries.map((entry) {
                   int idx = entry.key;
                   var stop = entry.value;
-                  return _buildStationStep(
-                    stop.nameFr,
-                    isFirst: idx == 0,
-                    isLast: idx == provider.currentItinerary.length - 1,
+                  bool isLast = idx == provider.currentItinerary.length - 1;
+
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(Icons.radio_button_checked, size: 18, color: Colors.blue[800]),
+                          const SizedBox(width: 15),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(stop.nameFr, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+                                Text(stop.nameAr, style: TextStyle(fontSize: 13, color: Colors.grey[600])),
+                              ],
+                            ),
+                          ),
+                          Text("${idx + 1}", style: TextStyle(color: Colors.grey[400], fontSize: 12)),
+                        ],
+                      ),
+                      if (!isLast)
+                        const Padding(
+                          padding: EdgeInsets.only(left: 7, top: 2, bottom: 2),
+                          child: Text("-", style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.blue)),
+                        ),
+                    ],
                   );
                 }),
+              const SizedBox(height: 20),
             ],
           ),
         ),
-        _buildConfirmButton(trip, auth),
+        _buildTrackButton(trip, auth), // Removed mapProvider, kept auth
       ],
     );
   }
 
-  // --- UI COMPONENTS ---
+  Widget _buildTripInfoSummary(RotationModel trip, MapProvider provider, bool isRealUser) {
+    final bool currentlyFavorite = provider.isFavorite(trip.id!);
 
-  Widget _buildHeader(String title, {required bool isDetail}) {
-    return ListTile(
-      leading: isDetail
-          ? IconButton(
-        icon: const Icon(Icons.arrow_back),
-        onPressed: () => setState(() => _selectedTrip = null),
-      )
-          : const Icon(Icons.location_on, color: Colors.red),
-      title: Text(
-        title,
-        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-        overflow: TextOverflow.ellipsis,
+    return Container(
+      padding: const EdgeInsets.all(15),
+      decoration: BoxDecoration(
+        color: Colors.grey[100],
+        borderRadius: BorderRadius.circular(15),
       ),
-      trailing: IconButton(
-        icon: const Icon(Icons.close, color: Colors.grey),
-        onPressed: () => Navigator.pop(context),
+      child: Stack(
+        children: [
+          Column(
+            children: [
+              _infoLine(Icons.directions_bus, "Bus Plate", trip.busPlate ?? "N/A"),
+              const Divider(),
+              _infoLine(Icons.access_time, "Departure", trip.departureTime ?? "08:00"),
+              _infoLine(Icons.timer_outlined, "Arrival", trip.arrivalTime ?? "08:45"),
+            ],
+          ),
+          if (isRealUser)
+            Positioned(
+              top: 0,
+              right: 0,
+              child: IconButton(
+                onPressed: () {
+                  provider.toggleFavorite(trip);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(currentlyFavorite ? "Removed from Favourites" : "Added to Favourites"),
+                      duration: const Duration(seconds: 1),
+                    ),
+                  );
+                },
+                icon: Icon(
+                  currentlyFavorite ? Icons.star : Icons.star_border,
+                  color: currentlyFavorite ? Colors.amber : Colors.grey,
+                  size: 28,
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }
 
-  Widget _buildConfirmButton(RotationModel trip, AuthProvider auth) {
+  Widget _infoLine(IconData icon, String label, String value) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 0, 20, 25),
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          Icon(icon, size: 18, color: Colors.blueGrey),
+          const SizedBox(width: 10),
+          Text("$label: ", style: const TextStyle(color: Colors.black54)),
+          Text(value, style: const TextStyle(fontWeight: FontWeight.bold)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTrackButton(RotationModel trip, AuthProvider auth) {
+    return Padding(
+      padding: const EdgeInsets.all(20),
       child: ElevatedButton(
         style: ElevatedButton.styleFrom(
-          backgroundColor: Colors.green,
-          minimumSize: const Size(double.infinity, 55),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-          elevation: 2,
+            backgroundColor: Colors.green[700],
+            minimumSize: const Size(double.infinity, 55),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))
         ),
-        onPressed: () {
-          // If Guest, we can optionally show the dialog here instead of earlier
-          // if (auth.currentUser?.role == UserRole.GUEST) { ... }
+        onPressed: () async {
+          final navigator = Navigator.of(context);
+          final messenger = ScaffoldMessenger.of(context);
+          final trackingProvider = Provider.of<TrackingProvider>(context, listen: false);
 
-          Navigator.pop(context); // Close sheet
+          final String userId = auth.currentUser?.id ?? "GUEST_USER";
 
-          // Action: Here you navigate to your live tracking screen or update map state
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text("Tracking ${trip.lineNumber} (${trip.busPlate})"),
-              behavior: SnackBarBehavior.floating,
-            ),
+          // 🚀 FIX: Call the unified TrackingProvider method
+          bool success = await trackingProvider.activateAndTrack(
+              trip.id!,
+              widget.stationId,
+              userId
           );
+
+          if (success) {
+            navigator.pop();
+            messenger.showSnackBar(
+                const SnackBar(content: Text("Tracking activated. View bus on map."))
+            );
+          }
         },
-        child: const Text(
-          "CONFIRM & TRACK BUS",
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildMetricTile(IconData icon, String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Row(
-        children: [
-          CircleAvatar(
-            radius: 18,
-            backgroundColor: Colors.blueAccent.withOpacity(0.1),
-            child: Icon(icon, size: 18, color: Colors.blueAccent),
-          ),
-          const SizedBox(width: 15),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(label, style: const TextStyle(fontSize: 11, color: Colors.grey)),
-              Text(value, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildStationStep(String name, {required bool isFirst, required bool isLast}) {
-    return IntrinsicHeight(
-      child: Row(
-        children: [
-          Column(
-            children: [
-              Container(
-                width: 2,
-                height: 10,
-                color: isFirst ? Colors.transparent : Colors.blueAccent.withOpacity(0.5),
-              ),
-              Icon(
-                isFirst || isLast ? Icons.radio_button_checked : Icons.circle,
-                size: isFirst || isLast ? 18 : 12,
-                color: Colors.blueAccent,
-              ),
-              Expanded(
-                child: Container(
-                  width: 2,
-                  color: isLast ? Colors.transparent : Colors.blueAccent.withOpacity(0.5),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(width: 15),
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              child: Text(
-                name,
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: isFirst || isLast ? FontWeight.bold : FontWeight.normal,
-                  color: isFirst || isLast ? Colors.black87 : Colors.black54,
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildHandle() => Center(
-    child: Container(
-      margin: const EdgeInsets.only(top: 12, bottom: 8),
-      width: 45,
-      height: 5,
-      decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(10)),
-    ),
-  );
-
-  Widget _buildEmptyState(String msg) => Center(
-    child: Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Icon(Icons.bus_alert_outlined, size: 50, color: Colors.grey[300]),
-        const SizedBox(height: 10),
-        Text(msg, style: const TextStyle(color: Colors.grey)),
-      ],
-    ),
-  );
-}
-
-// --- TILE COMPONENT ---
-
-class _TripTile extends StatelessWidget {
-  final RotationModel trip;
-  final Function(RotationModel) onSelect;
-
-  const _TripTile({required this.trip, required this.onSelect});
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: () => onSelect(trip), // All roles (Guest/Passenger) can view details
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          border: Border.all(color: Colors.grey.shade100),
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Row(
-          children: [
-            // Line Badge
-            Container(
-              width: 50,
-              height: 50,
-              decoration: BoxDecoration(
-                color: Colors.blueAccent,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Center(
-                child: Text(
-                  trip.lineNumber ?? "??",
-                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18),
-                ),
-              ),
-            ),
-            const SizedBox(width: 15),
-            // Info
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    "${trip.departureStation} → ${trip.arrivalStation}",
-                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    "Bus Plate: ${trip.busPlate}",
-                    style: const TextStyle(fontSize: 12, color: Colors.grey, fontStyle: FontStyle.italic),
-                  ),
-                ],
-              ),
-            ),
-            const Icon(Icons.chevron_right, color: Colors.grey),
-          ],
-        ),
+        child: const Text("CONFIRM & TRACK", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
       ),
     );
   }

@@ -1,14 +1,17 @@
-// lib/data/models/live_tracking_model.dart
 class LiveTrackingModel {
-  final String rotationId;
-  final double vehicleLat;
-  final double vehicleLon;
+  final String? rotationId;
+  final String? lineNumber;
+  final String? destination;
+  final double vehicleLat; // Matches LiveTrackingDTO.vehicleLat
+  final double vehicleLon; // Matches LiveTrackingDTO.vehicleLon
   final double etaMinutes;
   final String status;
   final bool arrivalAlert;
 
   LiveTrackingModel({
-    required this.rotationId,
+    this.rotationId,
+    this.lineNumber,
+    this.destination,
     required this.vehicleLat,
     required this.vehicleLon,
     required this.etaMinutes,
@@ -19,11 +22,13 @@ class LiveTrackingModel {
   factory LiveTrackingModel.fromJson(Map<String, dynamic> json) {
     return LiveTrackingModel(
       rotationId: json['rotationId'],
-      vehicleLat: json['vehicleLat'],
-      vehicleLon: json['vehicleLon'],
+      lineNumber: json['lineNumber'],
+      destination: json['destination'],
+      vehicleLat: (json['vehicleLat'] as num).toDouble(),
+      vehicleLon: (json['vehicleLon'] as num).toDouble(),
       etaMinutes: (json['etaMinutes'] as num).toDouble(),
-      status: json['status'] ?? 'moving', // moving/stopped/visible
-      arrivalAlert: json['arrivalAlert'] ?? false, // Trigger if < 1 min
+      status: json['status'] ?? 'unknown',
+      arrivalAlert: json['arrivalAlert'] ?? false,
     );
   }
 }

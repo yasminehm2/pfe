@@ -1,12 +1,12 @@
+// lib/data/models/rotation_model.dart
 class RotationModel {
-  final String? id;
-  final String? lineNumber;
-  final String? departureTime;
-  final String? arrivalTime;
-  final String? busPlate;
+  final String? id; // Display record ID
+  final String? lineNumber; // denumli (e.g. L1)
+  final String? departureTime; // depart column
+  final String? arrivalTime; // arrivee column
+  final String? busPlate; // vehicule
   final String? departureStation;
   final String? arrivalStation;
-
 
   RotationModel({
     this.id,
@@ -16,7 +16,6 @@ class RotationModel {
     this.busPlate,
     this.departureStation,
     this.arrivalStation,
-
   });
 
   factory RotationModel.fromJson(Map<String, dynamic> json) {
@@ -29,5 +28,18 @@ class RotationModel {
       departureStation: json['departureStation'],
       arrivalStation: json['arrivalStation'],
     );
+  }
+
+  // 🚀 ADDED: Converts the object to JSON for SharedPreferences storage
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'lineNumber': lineNumber,
+      'departureTime': departureTime,
+      'arrivalTime': arrivalTime,
+      'busPlate': busPlate,
+      'departureStation': departureStation,
+      'arrivalStation': arrivalStation,
+    };
   }
 }
