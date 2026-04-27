@@ -9,18 +9,30 @@ import 'logic/providers/auth_provider.dart';
 import 'logic/providers/map_provider.dart';
 import 'logic/providers/tracking_provider.dart';
 import 'ui/screens/auth/login_screen.dart';
-import 'ui/screens/auth/signup_screen.dart'; // Ensure this is imported // Ensure this is imported
+import 'ui/screens/auth/signup_screen.dart';
 import 'ui/screens/map/bus_map_screen.dart';
 
+/**
+ * 🚀 THE ENTRY POINT:
+ * This is where the app "wakes up."
+ */
 void main() async {
+  // ⚙️ INITIALIZATION: Ensures Flutter services are ready before we start the app.
   WidgetsFlutterBinding.ensureInitialized();
 
+  // 📡 SETUP NETWORK & DATA LAYERS:
+  // We create one instance of each to share across the whole app.
   final dioClient = DioClient();
   final authRepo = AuthRepository(dioClient);
   final mapRepo = MapRepository(dioClient);
   final trackingRepo = TrackingRepository(dioClient);
 
   runApp(
+    /**
+     * 🏗️ THE MULTIPROVIDER:
+     * This "wraps" the entire app. It injects our three main logic controllers
+     * (Auth, Map, Tracking) so any screen can access them at any time.
+     */
     MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => AuthProvider(authRepo)),
@@ -39,22 +51,29 @@ class SfaxTransportApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Sfax Transport',
-      debugShowCheckedModeBanner: false,
+      debugShowCheckedModeBanner: false, // Removes the red "Debug" ribbon
       theme: ThemeData(
         primarySwatch: Colors.blue,
-        useMaterial3: true,
+        useMaterial3: true, // Uses the modern Google design system
       ),
-      // SMART ROUTING LOGIC
+
+      /**
+       * 🧠 SMART ROUTING LOGIC:
+       * The 'home' property uses a Consumer to watch the AuthProvider.
+       */
       home: Consumer<AuthProvider>(
         builder: (context, auth, _) {
-          // 1. If the user is logged in, go straight to the Map
+          // 1. If the user session is active (Login/Guest), send them to the Map.
           if (auth.isAuthenticated) {
             return const BusMapScreen();
           }
-          // 2. Otherwise, always start at the Welcome Screen
+          // 2. If no one is logged in, start at the Welcome/Branding Screen.
           return const WelcomeScreen();
         },
       ),
+
+      // 🗺️ NAVIGATION ROUTES:
+      // These are "shortcuts" used for moving between screens.
       routes: {
         '/welcome': (context) => const WelcomeScreen(),
         '/login': (context) => const LoginScreen(),

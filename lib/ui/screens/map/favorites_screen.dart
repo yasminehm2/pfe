@@ -1,11 +1,16 @@
-// lib/ui/screens/map/favorites_screen.dart
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../../logic/providers/auth_provider.dart';
 import '../../../logic/providers/map_provider.dart';
 import '../../../logic/providers/tracking_provider.dart';
+import '../../../data/models/station_model.dart';
+import '../../../data/models/displayInfo_model.dart';
 
+/**
+ * ⭐ THE FAVORITES SCREEN:
+ * Updated: Optimized to prevent double-loading stops sequence.
+ */
 class FavoritesScreen extends StatelessWidget {
   const FavoritesScreen({super.key});
 
@@ -40,8 +45,9 @@ class FavoritesScreen extends StatelessWidget {
             child: Column(
               children: [
                 ExpansionTile(
+                  // 🚀 FIX: Prevent double load by checking if data already exists
                   onExpansionChanged: (expanded) {
-                    if (expanded) {
+                    if (expanded && mapProvider.currentItinerary.isEmpty) {
                       mapProvider.fetchTripItinerary(trip.id!);
                     }
                   },
@@ -58,11 +64,11 @@ class FavoritesScreen extends StatelessWidget {
                     ),
                   ),
                   title: Text(
-                    "${trip.departureTime} → ${trip.arrivalTime}",
+                    "Departure: ${trip.departureTime}",
                     style: const TextStyle(
-                        fontSize: 18, fontWeight: FontWeight.bold),
+                        fontSize: 17, fontWeight: FontWeight.bold),
                   ),
-                  subtitle: Text("Bus Plate: ${trip.busPlate}"),
+                  subtitle: Text("Bus: ${trip.busPlate}"),
                   children: [
                     Padding(
                       padding: const EdgeInsets.symmetric(
@@ -78,7 +84,8 @@ class FavoritesScreen extends StatelessWidget {
                                 color: Colors.blueAccent),
                           ),
                           const SizedBox(height: 8),
-                          if (mapProvider.isLoading)
+                          // 🚀 FIX: Only show indicator if actually loading and list is empty
+                          if (mapProvider.isLoading && mapProvider.currentItinerary.isEmpty)
                             const LinearProgressIndicator()
                           else
                             Wrap(
@@ -91,20 +98,11 @@ class FavoritesScreen extends StatelessWidget {
                                 var station = entry.value;
                                 bool isLast = idx == mapProvider.currentItinerary.length - 1;
                                 return Text(
-                                  isLast
-                                      ? station.nameFr
-                                      : "${station.nameFr} - ",
-                                  style: TextStyle(
-                                      color: Colors.grey[800],
-                                      fontSize: 14),
+                                  isLast ? station.nameFr : "${station.nameFr} - ",
+                                  style: TextStyle(color: Colors.grey[800], fontSize: 13),
                                 );
                               }).toList()
-                                  : [
-                                const Text(
-                                    "Tap to load sequence...",
-                                    style: TextStyle(
-                                        fontStyle: FontStyle.italic))
-                              ],
+                                  : [const Text("Tap to load sequence...", style: TextStyle(fontStyle: FontStyle.italic))],
                             ),
                           const SizedBox(height: 10),
                         ],
@@ -113,67 +111,27 @@ class FavoritesScreen extends StatelessWidget {
                   ],
                 ),
                 Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 16, vertical: 8),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                   decoration: BoxDecoration(
                     color: Colors.grey[50],
-                    borderRadius: const BorderRadius.vertical(
-                        bottom: Radius.circular(16)),
+                    borderRadius: const BorderRadius.vertical(bottom: Radius.circular(16)),
                   ),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       IconButton(
-                        icon: const Icon(Icons.delete_outline,
-                            color: Colors.redAccent),
-                        tooltip: "Remove from favourites",
-                        onPressed: () {
-                          mapProvider.toggleFavorite(trip);
-                        },
+                        icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
+                        onPressed: () => mapProvider.toggleFavorite(trip),
                       ),
                       ElevatedButton.icon(
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.green[700],
+                          backgroundColor: Colors.blue[800],
                           foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12)),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                         ),
-                        onPressed: () async {
-                          final navigator = Navigator.of(context);
-                          final messenger = ScaffoldMessenger.of(context);
-                          final trackingProvider = context.read<TrackingProvider>();
-
-                          navigator.pop(); // Return to map
-
-                          // Make sure we have the itinerary loaded to get the start station ID
-                          await mapProvider.fetchTripItinerary(trip.id!);
-
-                          String startStationId = "";
-                          if (mapProvider.currentItinerary.isNotEmpty) {
-                            startStationId = mapProvider.currentItinerary.first.id;
-                          }
-
-                          final String userId = authProvider.currentUser?.id ?? "GUEST_USER";
-
-                          // 🚀 FIX: Call the unified TrackingProvider method
-                          bool success = await trackingProvider.activateAndTrack(
-                              trip.id!,
-                              startStationId,
-                              userId
-                          );
-
-                          if (success) {
-                            messenger.showSnackBar(
-                              const SnackBar(
-                                content: Text("Tracking activated from Favourites!"),
-                                backgroundColor: Colors.green,
-                              ),
-                            );
-                          }
-                        },
-                        icon: const Icon(Icons.play_arrow),
-                        label: const Text("Track Now",
-                            style: TextStyle(fontWeight: FontWeight.bold)),
+                        onPressed: () => _showStationPicker(context, trip, mapProvider, authProvider),
+                        icon: const Icon(Icons.location_searching),
+                        label: const Text("Select Station & Track"),
                       ),
                     ],
                   ),
@@ -186,6 +144,69 @@ class FavoritesScreen extends StatelessWidget {
     );
   }
 
+  void _showStationPicker(BuildContext context, DisplayInfoModel trip, MapProvider mapProvider, AuthProvider authProvider) async {
+    // 🚀 FIX: Guard against double fetch if user opens picker while itinerary is already loaded
+    if (mapProvider.currentItinerary.isEmpty) {
+      await mapProvider.fetchTripItinerary(trip.id!);
+    }
+
+    if (!context.mounted) return;
+
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (ctx) {
+        return Container(
+          padding: const EdgeInsets.all(16),
+          height: MediaQuery.of(context).size.height * 0.5,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text("Where are you boarding?", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 5),
+              const Text("Select your station to begin tracking.", style: TextStyle(color: Colors.grey)),
+              const Divider(),
+              Expanded(
+                child: ListView.builder(
+                  itemCount: mapProvider.currentItinerary.length,
+                  itemBuilder: (context, index) {
+                    final station = mapProvider.currentItinerary[index];
+                    return ListTile(
+                      leading: const Icon(Icons.radio_button_checked, color: Colors.blue),
+                      title: Text(station.nameFr),
+                      subtitle: Text(station.nameAr),
+                      onTap: () async {
+                        Navigator.pop(ctx);
+                        Navigator.pop(context);
+
+                        mapProvider.setTrackedStation(station.id);
+
+                        final trackingProvider = context.read<TrackingProvider>();
+                        final String userId = authProvider.currentUser?.id ?? "GUEST";
+
+                        bool success = await trackingProvider.activateAndTrack(
+                            trip.id!,
+                            station.id,
+                            userId
+                        );
+
+                        if (success) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text("Tracking ${trip.lineNumber} from ${station.nameFr}")),
+                          );
+                        }
+                      },
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   Widget _buildEmptyState() {
     return Center(
       child: Column(
@@ -193,16 +214,9 @@ class FavoritesScreen extends StatelessWidget {
         children: [
           Icon(Icons.star_border, size: 80, color: Colors.grey[400]),
           const SizedBox(height: 16),
-          Text(
-            "No favourites yet",
-            style: TextStyle(
-                fontSize: 20, fontWeight: FontWeight.bold, color: Colors.grey[600]),
-          ),
+          const Text("No favourites yet", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.grey)),
           const SizedBox(height: 8),
-          Text(
-            "Tap the star icon on any trip to save it here.",
-            style: TextStyle(color: Colors.grey[500]),
-          ),
+          const Text("Tap the star icon on any trip to save it here.", style: TextStyle(color: Colors.grey)),
         ],
       ),
     );

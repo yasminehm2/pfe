@@ -4,64 +4,46 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.yasmine.dto.LiveTrackingDTO;
-import org.yasmine.entity.Vehicle;
 import org.yasmine.exception.TrackingUnavailableException;
-import org.yasmine.service.RotationService;
 import org.yasmine.service.TrackingService;
 
-@RestController
-@RequestMapping("/api/tracking")
-@RequiredArgsConstructor
-@CrossOrigin(origins = "*") 
+@RestController // Tells Spring: "This class provides live data updates as JSON."
+@RequestMapping("/api/tracking") // Base URL: http://your-ip:8080/api/tracking
+@RequiredArgsConstructor // Connects the TrackingService automatically.
+@CrossOrigin(origins = "*") // Allows the Flutter app to talk to this server.
 public class TrackingController {
 
     private final TrackingService trackingService;
-    private final RotationService rotationService; // Used for dynamic calculations
 
     /**
-     * Activates live tracking for a specific passenger on a specific trip.
+     * ✅ CONFIRMATION: "I am officially tracking this bus"
      */
     @PostMapping("/{rotationId}/confirm")
     public ResponseEntity<Void> confirmTrip(
             @PathVariable String rotationId, 
             @RequestParam String userId) {
         trackingService.activateLiveTracking(userId, rotationId);
-        return ResponseEntity.ok().build();
+        return ResponseEntity.ok().build(); 
     }
 
     /**
-     * Polling endpoint for Flutter to get the live bus position and ETA.
+     * 📡 LIVE POLLING: "Where is the bus right now?"
+     * The Flutter app calls this every few seconds.
      */
     @GetMapping("/{rotationId}/live")
     public ResponseEntity<LiveTrackingDTO> getLiveUpdate(
             @PathVariable String rotationId, 
             @RequestParam String stationId) {
         
-        Vehicle vehicle = trackingService.getLiveBusPosition(rotationId);
-        
-        if (vehicle == null || vehicle.getNewlat() == null) {
+        // 🚀 Just ask the Service for the complete tracking package!
+        LiveTrackingDTO response = trackingService.getLiveTrackingUpdate(rotationId, stationId);
+
+        // SAFETY CHECK: If the service reports the bus is offline/no GPS, throw our exception
+        if (response.getStatus().equals("OFFLINE")) {
             throw new TrackingUnavailableException();
         }
 
-        // Fetching ETA (Logic moved to RotationService in previous steps)
-        // If you still have a separate ETAService, inject it here instead.
-        double eta = 0.0; 
-        try {
-            // Placeholder: Call your ETA calculation logic
-            // eta = rotationService.calculateDynamicETA(rotationId, stationId);
-        } catch (Exception e) {
-            eta = 0.0;
-        }
-
-        LiveTrackingDTO response = LiveTrackingDTO.builder()
-                .rotationId(rotationId)
-                .vehicleLat(Double.parseDouble(vehicle.getNewlat().replace(",", ".")))
-                .vehicleLon(Double.parseDouble(vehicle.getNewlon().replace(",", ".")))
-                .etaMinutes(eta)
-                .status(vehicle.getVisible() != null ? vehicle.getVisible() : "moving")
-                .arrivalAlert(eta <= 1.0)
-                .build();
-
+        // Send the complete package back to Flutter
         return ResponseEntity.ok(response);
     }
 }

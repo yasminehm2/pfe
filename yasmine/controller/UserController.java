@@ -6,32 +6,38 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import java.util.Map;
 
-@RestController
-@RequestMapping("/api/users")
-@CrossOrigin(origins = "*") // Allows Flutter's http client to connect
+@RestController // Tells Spring: "This class handles web requests for User data."
+@RequestMapping("/api/users") // Base URL: http://your-ip:8080/api/users
+@CrossOrigin(origins = "*") // Crucial: Allows your Flutter app to send data to the server.
 public class UserController {
 
-    @Autowired
+    @Autowired // Connects the UserRepository (The Database Gatekeeper).
     private UserRepository userRepository;
 
     /**
-     * Updates the passenger's current position in the Sfax database.
-     * Flutter must pass the dynamic userId received during login/signup.
+     * 📍 LOCATION PATCH: "Update where the passenger is standing"
+     * URL: PATCH /api/users/{userId}/location
+     * Logic: Updates ONLY the latitude and longitude without touching the password/name.
      */
     @PatchMapping("/{id}/location")
     public ResponseEntity<?> updateLocation(
-            @PathVariable String id,
-            @RequestBody Map<String, Double> coords) {
+            @PathVariable String id, // The unique User ID from Flutter.
+            @RequestBody Map<String, Double> coords) { // The {lat, lon} sent by the phone.
 
+        // 1. Search for the user in the database by their ID.
         return userRepository.findById(id).map(user -> {
-            // Update the lat/lon fields in the User entity
+            
+            // 2. Extract coordinates from the request and update the User object.
             user.setLat(coords.get("lat")); 
             user.setLon(coords.get("lon")); 
             
-            // Persist the changes to MySQL
+            // 3. Save the updated user back to the MySQL database.
             userRepository.save(user);
             
+            // 4. Send back a success message.
             return ResponseEntity.ok("Passenger position updated successfully.");
-        }).orElse(ResponseEntity.notFound().build());
+        })
+        // 5. SAFETY: If the user ID doesn't exist, send a "404 Not Found" error.
+        .orElse(ResponseEntity.notFound().build());
     }
 }

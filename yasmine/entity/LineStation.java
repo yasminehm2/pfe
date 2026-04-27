@@ -3,14 +3,15 @@ package org.yasmine.entity;
 import jakarta.persistence.*;
 import lombok.*;
 
-@Entity
-@Table(name = "line_station")
-@Data
-@NoArgsConstructor
-@AllArgsConstructor
-@Builder
+@Entity // Tells Java: "This class is a database table."
+@Table(name = "line_station") // The table is named "line_station".
+@Data // Automatically creates Getters, Setters, etc.
+@NoArgsConstructor // Empty constructor.
+@AllArgsConstructor // Full constructor.
+@Builder // Allows you to build objects easily.
 public class LineStation {
-    @Id
+
+    @Id // The unique Primary Key for this specific row.
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
@@ -20,9 +21,16 @@ public class LineStation {
     @Column(name = "station_id", nullable = false)
     private String stationId;
 
-    @Column(name = "station_order")
+    @Column(name = "station_order") 
+    // 💡 IMPORTANT: This tells us the sequence (e.g., 1st stop, 2nd stop, 3rd stop).
     private Integer stationOrder;
 
+    // 🚀 UPDATED: How many total minutes from the FIRST station on the line to this one?
+    // (For the 1st station, this will be 0. For the 2nd it might be 5. For the 3rd, 12, etc.)
+    @Column(name = "minutes_from_start")
+    private Integer minutesFromStartStation;
+
+    // 🔗 LINK TO LINE
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(
             name = "line_id",
@@ -34,7 +42,7 @@ public class LineStation {
     @EqualsAndHashCode.Exclude
     private Line line;
 
-    // 🚀 CHANGE: Changed from LAZY to EAGER to ensure names are loaded
+    // 🔗 LINK TO STATION
     @ManyToOne(fetch = FetchType.EAGER) 
     @JoinColumn(
             name = "station_id",

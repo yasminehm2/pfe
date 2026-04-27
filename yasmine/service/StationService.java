@@ -3,29 +3,30 @@ package org.yasmine.service;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-import org.yasmine.dto.StationResponseDTO;
+import org.yasmine.dto.StationDTO;
 import org.yasmine.entity.DisplayInfo;
 import org.yasmine.entity.Station;
 import org.yasmine.repository.DisplayInfoRepository;
-import org.yasmine.repository.LineRotRepository;
 import org.yasmine.repository.LineStationRepository;
 import org.yasmine.repository.StationRepository;
 
 import java.util.List;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
-@Service
-@RequiredArgsConstructor
-@Slf4j
+@Service // Tells Spring: "This class manages the core logic for Stations."
+@RequiredArgsConstructor // Connects all the Repositories automatically.
+@Slf4j // Allows us to print error messages to the console.
 public class StationService {
 
     private final StationRepository stationRepository;
-    private final LineRotRepository lineRotRepository;
     private final LineStationRepository lineStationRepository;
     private final DisplayInfoRepository displayInfoRepository;
 
     /**
-     * Converts String coordinates (potentially with commas) to double.
+     * 💡 LOGIC: "The Number Cleaner"
+     * Database coordinates are often strings like "34,73". 
+     * This turns them into a Java number (34.73) so we can do math.
      */
     public double parseCoordinate(String coord) {
         if (coord == null || coord.trim().isEmpty()) return 0.0;
@@ -38,7 +39,8 @@ public class StationService {
     }
 
     /**
-     * Cleans direction strings (e.g., "Direction: Sfax-Sud") for the UI.
+     * 💡 LOGIC: "The Text Cleaner"
+     * Changes "Direction: Sfax-Sud" into just "Sud". 
      */
     public String formatDirectionAsArrival(String direction) {
         if (direction == null || direction.isBlank()) return "Terminus";
@@ -51,7 +53,7 @@ public class StationService {
     }
 
     /**
-     * Haversine formula for distance calculation in kilometers.
+     * 💡 LOGIC: "The Distance Calculator" (Haversine Formula)
      */
     public double calculateDistance(double lat1, double lon1, double lat2, double lon2) {
         double earthRadius = 6371; 
@@ -63,7 +65,10 @@ public class StationService {
         return earthRadius * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
     }
 
-    public List<StationResponseDTO> getNearbyStations(double userLat, double userLon, double radius) {
+    /**
+     * 💡 LOGIC: "What stops are near me?"
+     */
+    public List<StationDTO> getNearbyStations(double userLat, double userLon, double radius) {
         return stationRepository.findAll().stream()
                 .map(station -> {
                     double sLat = parseCoordinate(station.getLatitude());
@@ -71,7 +76,7 @@ public class StationService {
                     double distance = calculateDistance(userLat, userLon, sLat, sLon);
                     
                     if (distance <= radius) {
-                        return StationResponseDTO.builder()
+                        return StationDTO.builder()
                                 .id(station.getId())
                                 .nameAr(station.getDelstat())
                                 .nameFr(station.getDelstatfr())
@@ -82,37 +87,44 @@ public class StationService {
                     }
                     return null;
                 })
-                .filter(dto -> dto != null)
+                .filter(Objects::nonNull) 
                 .collect(Collectors.toList());
     }
 
     /**
-     * Retrieves the sequence of stops for a trip ID from the display table.
-     * Maps: Display ID (e.g., 4) -> Line Name (L1) -> Line Stations.
+     * 💡 LOGIC: "Show the full Route Map"
+     * 🚀 UPDATED: Now includes minutesFromStartStation so Flutter can show 4, 9, 12 mins.
      */
-    public List<StationResponseDTO> getItineraryByRotation(String rotationId) {
+    public List<StationDTO> getItineraryByRotation(String rotationId) {
+        // 1. Look up the trip in the Display table to find the Line ID.
         Long id = Long.parseLong(rotationId);
         String lineId = displayInfoRepository.findById(id)
                 .map(DisplayInfo::getDenumli) 
                 .orElse(null);
 
-        if (lineId == null) return List.of();
+        if (lineId == null) {
+            log.warn("Could not find lineId for rotationId: {}", rotationId);
+            return List.of();
+        }
 
+        // 2. Get all stations for that line and map them to DTOs including the DB timing.
         return lineStationRepository.findByLineIdOrderByStationOrderAsc(lineId).stream()
                 .map(ls -> {
-                    // This 'getStation()' now works because of the EAGER fetch
                     Station s = ls.getStation();
                     if (s == null) return null;
                     
-                    return StationResponseDTO.builder()
+                    return StationDTO.builder()
                             .id(s.getId())
-                            .nameAr(s.getDelstat())   // Arabic name from DB
-                            .nameFr(s.getDelstatfr()) // French name from DB
+                            .nameAr(s.getDelstat())
+                            .nameFr(s.getDelstatfr())
                             .latitude(parseCoordinate(s.getLatitude()))
                             .longitude(parseCoordinate(s.getLongitude()))
+                            // 🚀 THE FIX: Link the DB column value to the DTO
+                            .minutesFromStartStation(ls.getMinutesFromStartStation()) 
+                            .hasPassed(false) // Default status before tracking starts
                             .build();
                 })
-                .filter(java.util.Objects::nonNull)
+                .filter(Objects::nonNull)
                 .collect(Collectors.toList());
     }
-    }
+}

@@ -1,10 +1,10 @@
-// lib/ui/screens/map/trip_list_sheet.dart
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../../data/models/displayInfo_model.dart';
 import '../../../logic/providers/map_provider.dart';
 import '../../../logic/providers/auth_provider.dart';
 import '../../../logic/providers/tracking_provider.dart';
-import '../../../data/models/rotation_model.dart';
+import '../../../data/models/station_model.dart';
 
 class TripListSheet extends StatefulWidget {
   final String stationName;
@@ -17,15 +17,7 @@ class TripListSheet extends StatefulWidget {
 }
 
 class _TripListSheetState extends State<TripListSheet> {
-  RotationModel? _selectedTrip;
-
-  @override
-  void didUpdateWidget(TripListSheet oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.stationName != widget.stationName) {
-      _selectedTrip = null;
-    }
-  }
+  DisplayInfoModel? _selectedTrip;
 
   @override
   Widget build(BuildContext context) {
@@ -42,18 +34,18 @@ class _TripListSheetState extends State<TripListSheet> {
         children: [
           const SizedBox(height: 12),
           Container(
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                  color: Colors.grey[300],
-                  borderRadius: BorderRadius.circular(10)
-              )
+            width: 40,
+            height: 4,
+            decoration: BoxDecoration(
+              color: Colors.grey[300],
+              borderRadius: BorderRadius.circular(10),
+            ),
           ),
           ListTile(
             leading: _selectedTrip != null
                 ? IconButton(
-                icon: const Icon(Icons.arrow_back),
-                onPressed: () => setState(() => _selectedTrip = null)
+              icon: const Icon(Icons.arrow_back),
+              onPressed: () => setState(() => _selectedTrip = null),
             )
                 : const Icon(Icons.location_on, color: Colors.red),
             title: Text(
@@ -63,8 +55,8 @@ class _TripListSheetState extends State<TripListSheet> {
               style: const TextStyle(fontWeight: FontWeight.bold),
             ),
             trailing: IconButton(
-                icon: const Icon(Icons.close),
-                onPressed: () => Navigator.pop(context)
+              icon: const Icon(Icons.close),
+              onPressed: () => Navigator.pop(context),
             ),
           ),
           const Divider(),
@@ -79,9 +71,10 @@ class _TripListSheetState extends State<TripListSheet> {
   }
 
   Widget _buildListView(MapProvider provider) {
-    if (provider.isLoading) return const Center(child: CircularProgressIndicator());
+    // 🚀 FIX: More specific loading check
+    if (provider.isLoading && provider.selectedStationTrips.isEmpty) return const Center(child: CircularProgressIndicator());
     if (provider.selectedStationTrips.isEmpty) {
-      return const Center(child: Text("No active buses for this line."));
+      return const Center(child: Text("No active buses for this station."));
     }
 
     return ListView.builder(
@@ -89,31 +82,71 @@ class _TripListSheetState extends State<TripListSheet> {
       itemCount: provider.selectedStationTrips.length,
       itemBuilder: (context, index) {
         final trip = provider.selectedStationTrips[index];
+        final bool isCancelled = trip.isCancelled;
+
         return Card(
-          elevation: 2,
+          elevation: isCancelled ? 0 : 2,
+          color: isCancelled ? Colors.grey[50] : Colors.white,
           margin: const EdgeInsets.only(bottom: 10),
           child: ListTile(
-            onTap: () {
-              setState(() => _selectedTrip = trip);
-              provider.fetchTripItinerary(trip.id!);
+            onTap: isCancelled
+                ? null
+                : () {
+              // 🚀 FIX: Only fetch if the trip is actually different
+              if (_selectedTrip?.id != trip.id) {
+                setState(() => _selectedTrip = trip);
+                provider.fetchTripItinerary(trip.id!);
+              } else {
+                setState(() => _selectedTrip = trip);
+              }
             },
             leading: CircleAvatar(
-              backgroundColor: Colors.blue[900],
+              backgroundColor: isCancelled ? Colors.grey[400] : Colors.blue[900],
               child: Text(
-                  trip.lineNumber ?? "?",
-                  style: const TextStyle(color: Colors.white, fontSize: 12)
+                trip.lineNumber ?? "?",
+                style: const TextStyle(color: Colors.white, fontSize: 12),
               ),
             ),
-            title: Text("${trip.departureTime} → ${trip.arrivalTime}"),
-            subtitle: Text("Bus: ${trip.busPlate}"),
-            trailing: const Icon(Icons.chevron_right),
+            title: Row(
+              children: [
+                Text(
+                  "Departure: ${trip.departureTime}",
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: isCancelled ? Colors.grey : Colors.black,
+                    decoration: isCancelled ? TextDecoration.lineThrough : null,
+                  ),
+                ),
+                if (isCancelled) ...[
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: Colors.red[50],
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: const Text(
+                      "CANCELLED",
+                      style: TextStyle(color: Colors.red, fontSize: 10, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ]
+              ],
+            ),
+            subtitle: Text(
+              isCancelled ? "Service Interrupted" : "Bus: ${trip.busPlate}",
+              style: TextStyle(color: isCancelled ? Colors.grey : null),
+            ),
+            trailing: isCancelled
+                ? const Icon(Icons.block, color: Colors.redAccent)
+                : const Icon(Icons.chevron_right),
           ),
         );
       },
     );
   }
 
-  Widget _buildDetailView(RotationModel trip, MapProvider provider, AuthProvider auth) {
+  Widget _buildDetailView(DisplayInfoModel trip, MapProvider provider, AuthProvider auth) {
     final bool isAuthenticated = auth.currentUser != null;
     final bool isGuest = isAuthenticated && auth.currentUser!.id.toString().toUpperCase().contains('GUEST');
     final bool isRealUser = isAuthenticated && !isGuest;
@@ -125,47 +158,54 @@ class _TripListSheetState extends State<TripListSheet> {
             padding: const EdgeInsets.symmetric(horizontal: 20),
             children: [
               const SizedBox(height: 10),
-              _buildTripInfoSummary(trip, provider, isRealUser),
+              _buildTripSummary(trip, provider, isRealUser),
               const Padding(
                 padding: EdgeInsets.symmetric(vertical: 20),
-                child: Text(
-                    "STOPS SEQUENCE",
-                    style: TextStyle(color: Colors.blue, fontWeight: FontWeight.bold, letterSpacing: 1.2)
-                ),
+                child: Text("STOPS SEQUENCE", style: TextStyle(color: Colors.blue, fontWeight: FontWeight.bold, letterSpacing: 1.1)),
               ),
-              if (provider.isLoading)
+              // 🚀 FIX: Prevent layout shift by checking both loading and data presence
+              if (provider.isLoading && provider.currentItinerary.isEmpty)
                 const Center(child: LinearProgressIndicator())
-              else if (provider.currentItinerary.isEmpty)
-                const Center(child: Text("Itinerary data unavailable."))
               else
                 ...provider.currentItinerary.asMap().entries.map((entry) {
                   int idx = entry.key;
-                  var stop = entry.value;
+                  StationModel stop = entry.value;
                   bool isLast = idx == provider.currentItinerary.length - 1;
+
+                  String timeDisplay = "${stop.minutesFromStartStation ?? 0} min";
+                  if (stop.hasPassed) {
+                    timeDisplay = "Passed";
+                  } else if (stop.liveEtaMinutes != null) {
+                    timeDisplay = "${stop.liveEtaMinutes} min (Live)";
+                  }
 
                   return Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Row(
                         children: [
-                          Icon(Icons.radio_button_checked, size: 18, color: Colors.blue[800]),
+                          Icon(stop.hasPassed ? Icons.check_circle : Icons.radio_button_checked, size: 18, color: stop.hasPassed ? Colors.green : Colors.blue[800]),
                           const SizedBox(width: 15),
                           Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text(stop.nameFr, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
-                                Text(stop.nameAr, style: TextStyle(fontSize: 13, color: Colors.grey[600])),
+                                Text(stop.nameFr, style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: stop.hasPassed ? Colors.grey : Colors.black)),
+                                Text(stop.nameAr, style: TextStyle(fontSize: 12, color: Colors.grey[500])),
                               ],
                             ),
                           ),
-                          Text("${idx + 1}", style: TextStyle(color: Colors.grey[400], fontSize: 12)),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(color: stop.hasPassed ? Colors.green[50] : Colors.blue[50], borderRadius: BorderRadius.circular(12)),
+                            child: Text(timeDisplay, style: TextStyle(color: stop.hasPassed ? Colors.green : Colors.blue, fontWeight: FontWeight.bold, fontSize: 11)),
+                          ),
                         ],
                       ),
                       if (!isLast)
-                        const Padding(
-                          padding: EdgeInsets.only(left: 7, top: 2, bottom: 2),
-                          child: Text("-", style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.blue)),
+                        Padding(
+                          padding: const EdgeInsets.only(left: 8),
+                          child: Container(height: 30, width: 2, color: stop.hasPassed ? Colors.green[200] : Colors.blue[100]),
                         ),
                     ],
                   );
@@ -174,49 +214,31 @@ class _TripListSheetState extends State<TripListSheet> {
             ],
           ),
         ),
-        _buildTrackButton(trip, auth), // Removed mapProvider, kept auth
+        if (!trip.isCancelled) _buildTrackButton(trip, auth),
       ],
     );
   }
 
-  Widget _buildTripInfoSummary(RotationModel trip, MapProvider provider, bool isRealUser) {
+  Widget _buildTripSummary(DisplayInfoModel trip, MapProvider provider, bool isRealUser) {
     final bool currentlyFavorite = provider.isFavorite(trip.id!);
-
     return Container(
       padding: const EdgeInsets.all(15),
-      decoration: BoxDecoration(
-        color: Colors.grey[100],
-        borderRadius: BorderRadius.circular(15),
-      ),
+      decoration: BoxDecoration(color: Colors.grey[100], borderRadius: BorderRadius.circular(15)),
       child: Stack(
         children: [
           Column(
             children: [
               _infoLine(Icons.directions_bus, "Bus Plate", trip.busPlate ?? "N/A"),
               const Divider(),
-              _infoLine(Icons.access_time, "Departure", trip.departureTime ?? "08:00"),
-              _infoLine(Icons.timer_outlined, "Arrival", trip.arrivalTime ?? "08:45"),
+              _infoLine(Icons.access_time, "Departure", trip.departureTime ?? "N/A"),
             ],
           ),
           if (isRealUser)
             Positioned(
-              top: 0,
-              right: 0,
+              top: 0, right: 0,
               child: IconButton(
-                onPressed: () {
-                  provider.toggleFavorite(trip);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(currentlyFavorite ? "Removed from Favourites" : "Added to Favourites"),
-                      duration: const Duration(seconds: 1),
-                    ),
-                  );
-                },
-                icon: Icon(
-                  currentlyFavorite ? Icons.star : Icons.star_border,
-                  color: currentlyFavorite ? Colors.amber : Colors.grey,
-                  size: 28,
-                ),
+                onPressed: () => provider.toggleFavorite(trip),
+                icon: Icon(currentlyFavorite ? Icons.star : Icons.star_border, color: currentlyFavorite ? Colors.amber : Colors.grey, size: 28),
               ),
             ),
         ],
@@ -238,35 +260,21 @@ class _TripListSheetState extends State<TripListSheet> {
     );
   }
 
-  Widget _buildTrackButton(RotationModel trip, AuthProvider auth) {
+  Widget _buildTrackButton(DisplayInfoModel trip, AuthProvider auth) {
     return Padding(
       padding: const EdgeInsets.all(20),
       child: ElevatedButton(
         style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.green[700],
-            minimumSize: const Size(double.infinity, 55),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))
+          backgroundColor: Colors.green[700],
+          minimumSize: const Size(double.infinity, 55),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
         ),
         onPressed: () async {
-          final navigator = Navigator.of(context);
-          final messenger = ScaffoldMessenger.of(context);
-          final trackingProvider = Provider.of<TrackingProvider>(context, listen: false);
-
-          final String userId = auth.currentUser?.id ?? "GUEST_USER";
-
-          // 🚀 FIX: Call the unified TrackingProvider method
-          bool success = await trackingProvider.activateAndTrack(
-              trip.id!,
-              widget.stationId,
-              userId
-          );
-
-          if (success) {
-            navigator.pop();
-            messenger.showSnackBar(
-                const SnackBar(content: Text("Tracking activated. View bus on map."))
-            );
-          }
+          final String userId = auth.currentUser?.id ?? "GUEST";
+          context.read<MapProvider>().setTrackedStation(widget.stationId);
+          bool success = await Provider.of<TrackingProvider>(context, listen: false)
+              .activateAndTrack(trip.id!, widget.stationId, userId);
+          if (success) Navigator.pop(context);
         },
         child: const Text("CONFIRM & TRACK", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
       ),

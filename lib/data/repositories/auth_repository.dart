@@ -1,20 +1,20 @@
-import 'dart:convert';
-
 import 'package:dio/dio.dart';
-import 'package:http/http.dart' as http;
-import 'package:http/http.dart' as _dio;
-
 import '../../core/network/dio_client.dart';
 import '../../core/constants/api_constants.dart';
 import '../models/user_model.dart';
 import 'package:flutter/foundation.dart';
 
+/**
+ * 💼 THE AUTH REPOSITORY:
+ * This class organizes all the "Identity" actions.
+ * It sits between the UI and the Network layer.
+ */
 class AuthRepository {
   final DioClient _client;
 
   AuthRepository(this._client);
 
-  /// Registers a new user in the database with coordinates
+  /// 📝 SIGNUP: "Create a new profile in Sfax"
   Future<UserModel> signup({
     required String name,
     required String email,
@@ -29,25 +29,24 @@ class AuthRepository {
           'name': name,
           'email': email,
           'password': password,
-          // 💡 TIP: Si ton backend accepte les valeurs nulles,
-          // enlève le "?? 0.0" pour éviter de placer l'utilisateur au milieu de l'océan.
+          // Defaults to 0.0 if the user hasn't allowed GPS yet.
           'lat': lat ?? 0.0,
           'lon': lon ?? 0.0,
         },
       );
 
-      // Dio décode automatiquement le JSON en Map<String, dynamic>
+      // Converts the JSON reply from Spring Boot into a UserModel.
       return UserModel.fromJson(response.data);
     } on DioException catch (e) {
       _handleDioError("Signup", e);
-      rethrow;
+      rethrow; // Passes the error up so the UI can show a snackbar.
     } catch (e) {
       debugPrint("Unexpected Signup Error: $e");
       rethrow;
     }
   }
 
-  /// Authenticates an existing user
+  /// 🔑 LOGIN: "Verify my existing account"
   Future<UserModel> login(String email, String password) async {
     try {
       final response = await _client.dio.post(
@@ -68,7 +67,7 @@ class AuthRepository {
     }
   }
 
-  /// Provides temporary access
+  /// 🚪 GUEST ACCESS: "Let me in quickly"
   Future<UserModel> enterAsGuest() async {
     try {
       final response = await _client.dio.post(ApiConstants.guest);
@@ -82,8 +81,8 @@ class AuthRepository {
     }
   }
 
-  // Inside your AuthRepository class
-  // Replace your existing updateUserLocation with this:
+  /// 📍 SYNC LOCATION: "Keep the database updated with my GPS"
+  /// Uses a PATCH request to specifically update only the coordinates.
   Future<void> updateUserLocation({
     required String userId,
     required double lat,
@@ -103,7 +102,11 @@ class AuthRepository {
     }
   }
 
-  /// Helper method to log detailed Dio errors in development
+  /**
+   * 🛠️ ERROR LOGGER:
+   * A helper method to print exactly what went wrong in your console.
+   * Very helpful for finding out if your Spring Boot server is down!
+   */
   void _handleDioError(String action, DioException e) {
     debugPrint("---------- Dio Error during $action ----------");
     debugPrint("Message: ${e.message}");

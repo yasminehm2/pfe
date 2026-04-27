@@ -1,13 +1,11 @@
-// lib/logic/providers/map_provider.dart
-
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:flutter/material.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:flutter_map/flutter_map.dart';
-import 'package:shared_preferences/shared_preferences.dart'; // 🚀 IMPORT ADDED
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../data/models/station_model.dart';
-import '../../data/models/rotation_model.dart';
+import '../../data/models/displayInfo_model.dart';
 import '../../data/repositories/map_repository.dart';
 
 class MapProvider extends ChangeNotifier {
@@ -15,7 +13,6 @@ class MapProvider extends ChangeNotifier {
 
   MapProvider(this._repository);
 
-  // --- State Variables ---
   bool _isLoading = false;
   bool get isLoading => _isLoading;
 
@@ -35,70 +32,112 @@ class MapProvider extends ChangeNotifier {
   LatLng? _liveBusLocation;
   LatLng? get liveBusLocation => _liveBusLocation;
 
-  List<RotationModel> _selectedStationTrips = [];
-  List<RotationModel> get selectedStationTrips => _selectedStationTrips;
+  List<DisplayInfoModel> _selectedStationTrips = [];
+  List<DisplayInfoModel> get selectedStationTrips => _selectedStationTrips;
 
   List<StationModel> _currentItinerary = [];
   List<StationModel> get currentItinerary => _currentItinerary;
 
-  final List<RotationModel> _favoriteTrips = [];
-  List<RotationModel> get favoriteTrips => _favoriteTrips;
+  final List<DisplayInfoModel> _favoriteTrips = [];
+  List<DisplayInfoModel> get favoriteTrips => _favoriteTrips;
 
   LatLng _currentViewCenter = const LatLng(34.727, 10.718);
   LatLng get currentViewCenter => _currentViewCenter;
 
   Function(String, String)? onStationSelected;
-
-  // 🚀 NEW: Tracks whose favorites are currently loaded
   String? _currentUserId;
 
-  // --- Favourites Logic ---
+  // 🚀 TRACKED STATION LOGIC
+  String? _trackedStationId;
+  int _cameraMoveTrigger = 0;
+  int get cameraMoveTrigger => _cameraMoveTrigger;
 
-  // 🚀 NEW: Loads the specific user's saved favorites from the phone
+  void triggerCameraToBus() {
+    _cameraMoveTrigger++;
+    notifyListeners();
+  }
+
+  // 🚀 Set the specific station the user is boarding from
+  void setTrackedStation(String stationId) {
+    _trackedStationId = stationId;
+    notifyListeners();
+  }
+
+  // 🚀 Filtered labels for the map (Only shows the boarding station)
+  List<Marker> get itineraryTimeLabels {
+    return _currentItinerary
+        .where((s) => s.id == _trackedStationId) // 🎯 THE FILTER
+        .map((station) {
+      String label = "${station.minutesFromStartStation ?? 0} min";
+      Color bgColor = Colors.blue[900]!;
+
+      if (station.hasPassed) {
+        label = "Passed";
+        bgColor = Colors.grey[700]!;
+      } else if (station.liveEtaMinutes != null) {
+        label = "${station.liveEtaMinutes} min";
+        bgColor = Colors.green[700]!;
+      }
+
+      return Marker(
+        point: LatLng(station.latitude, station.longitude),
+        width: 75,
+        height: 35,
+        alignment: const Alignment(0, -2.5),
+        child: IgnorePointer(
+          child: Container(
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: bgColor.withOpacity(0.9),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.white, width: 1),
+              boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 4)],
+            ),
+            child: Text(
+              label,
+              style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+            ),
+          ),
+        ),
+      );
+    }).toList();
+  }
+
   Future<void> loadFavorites(String userId) async {
     _currentUserId = userId;
     _favoriteTrips.clear();
-
-    // Guests do not get favorites. Exit early.
     if (userId.toUpperCase().contains('GUEST')) {
       notifyListeners();
       return;
     }
-
     final prefs = await SharedPreferences.getInstance();
-    final String? favString = prefs.getString('favorites_$userId'); // Fetch by ID
-
+    final String? favString = prefs.getString('favorites_$userId');
     if (favString != null) {
       final List decoded = json.decode(favString);
-      _favoriteTrips.addAll(decoded.map((e) => RotationModel.fromJson(e)).toList());
+      _favoriteTrips.addAll(decoded.map((e) => DisplayInfoModel.fromJson(e)).toList());
     }
     notifyListeners();
   }
 
-  // 🚀 NEW: Saves the current user's list to the phone
   Future<void> _saveFavoritesToStorage() async {
     if (_currentUserId == null || _currentUserId!.toUpperCase().contains('GUEST')) return;
-
     final prefs = await SharedPreferences.getInstance();
     final String encoded = json.encode(_favoriteTrips.map((e) => e.toJson()).toList());
-    await prefs.setString('favorites_$_currentUserId', encoded); // Save by ID
+    await prefs.setString('favorites_$_currentUserId', encoded);
   }
 
-  bool isFavorite(String tripId) {
-    return _favoriteTrips.any((trip) => trip.id == tripId);
-  }
+  bool isFavorite(String tripId) => _favoriteTrips.any((trip) => trip.id == tripId);
 
-  void toggleFavorite(RotationModel trip) {
+  void toggleFavorite(DisplayInfoModel trip) {
     if (isFavorite(trip.id!)) {
       _favoriteTrips.removeWhere((t) => t.id == trip.id);
     } else {
       _favoriteTrips.add(trip);
     }
-    _saveFavoritesToStorage(); // 🚀 Persist changes locally instantly
+    _saveFavoritesToStorage();
     notifyListeners();
   }
 
-  // --- Logic Methods ---
   void updateCenter(LatLng newCenter) {
     _currentViewCenter = newCenter;
     notifyListeners();
@@ -111,8 +150,9 @@ class MapProvider extends ChangeNotifier {
     _selectedStationTrips = [];
     _stationMarkers = [];
     _allStations = [];
-    _favoriteTrips.clear(); // 🚀 CLEAR FAVORITES ON LOGOUT
-    _currentUserId = null; // 🚀 CLEAR USER ID
+    _favoriteTrips.clear();
+    _currentUserId = null;
+    _trackedStationId = null; // Clear tracking
     notifyListeners();
   }
 
@@ -120,11 +160,21 @@ class MapProvider extends ChangeNotifier {
     _routePoints = [];
     _liveBusLocation = null;
     _currentItinerary = [];
+    _trackedStationId = null; // Clear tracking
     notifyListeners();
   }
 
-  void updateBusLocation(double lat, double lon) {
-    _liveBusLocation = LatLng(lat, lon);
+  void updateFromLiveTracking(Map<String, dynamic> json) {
+    if (json['vehicleLat'] != null && json['vehicleLon'] != null) {
+      _liveBusLocation = LatLng(
+        (json['vehicleLat'] as num).toDouble(),
+        (json['vehicleLon'] as num).toDouble(),
+      );
+    }
+    if (json['itinerary'] != null) {
+      final List itineraryData = json['itinerary'];
+      _currentItinerary = itineraryData.map((item) => StationModel.fromJson(item)).toList();
+    }
     notifyListeners();
   }
 
@@ -134,8 +184,7 @@ class MapProvider extends ChangeNotifier {
     try {
       final List<StationModel> stationsFromDb = await _repository.getNearbyStations(lat, lon);
       final String fetchId = DateTime.now().millisecondsSinceEpoch.toString();
-
-      final List<Marker> newMarkers = stationsFromDb.map((station) {
+      _stationMarkers = stationsFromDb.map((station) {
         return Marker(
           key: ValueKey("marker_${station.id}_$fetchId"),
           point: LatLng(station.latitude, station.longitude),
@@ -143,7 +192,6 @@ class MapProvider extends ChangeNotifier {
           height: 120,
           child: Center(
             child: GestureDetector(
-              key: ValueKey("tap_${station.id}_$fetchId"),
               behavior: HitTestBehavior.opaque,
               onTap: () => onStationSelected?.call(station.id, station.nameFr),
               child: Column(
@@ -157,8 +205,6 @@ class MapProvider extends ChangeNotifier {
           ),
         );
       }).toList();
-
-      _stationMarkers = newMarkers;
       _allStations = stationsFromDb;
     } catch (e) {
       debugPrint("❌ Map Sync Error: $e");
@@ -189,10 +235,10 @@ class MapProvider extends ChangeNotifier {
     notifyListeners();
     try {
       _currentItinerary = await _repository.getTripItinerary(rotationId);
-
       if (_currentItinerary.isNotEmpty) {
         _liveBusLocation = LatLng(_currentItinerary.first.latitude, _currentItinerary.first.longitude);
         await _fetchRoadAlignedPath(_currentItinerary);
+        triggerCameraToBus();
       }
     } catch (e) {
       debugPrint("❌ Itinerary Sync Error: $e");
@@ -220,21 +266,6 @@ class MapProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> getRoute(LatLng start, LatLng end) async {
-    final url = 'https://router.project-osrm.org/route/v1/driving/${start.longitude},${start.latitude};${end.longitude},${end.latitude}?overview=full&geometries=geojson';
-    try {
-      final response = await http.get(Uri.parse(url));
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        if (data['routes'] != null && data['routes'].isNotEmpty) {
-          final List coords = data['routes'][0]['geometry']['coordinates'];
-          _routePoints = coords.map((c) => LatLng(c[1].toDouble(), c[0].toDouble())).toList();
-          notifyListeners();
-        }
-      }
-    } catch (e) { debugPrint("❌ Routing Error: $e"); }
-  }
-
   Widget _buildStationLabel(String ar, String fr) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
@@ -246,11 +277,5 @@ class MapProvider extends ChangeNotifier {
         ],
       ),
     );
-  }
-
-  @override
-  void dispose() {
-    onStationSelected = null;
-    super.dispose();
   }
 }
