@@ -3,9 +3,8 @@ import 'package:provider/provider.dart';
 
 import '../../../logic/providers/auth_provider.dart';
 import '../../../logic/providers/map_provider.dart';
-import '../../../logic/providers/tracking_provider.dart';
-import '../../../data/models/station_model.dart';
 import '../../../data/models/displayInfo_model.dart';
+import '../../../logic/providers/rotation_provider.dart';
 
 /**
  * ⭐ THE FAVORITES SCREEN:
@@ -181,7 +180,7 @@ class FavoritesScreen extends StatelessWidget {
 
                         mapProvider.setTrackedStation(station.id);
 
-                        final trackingProvider = context.read<TrackingProvider>();
+                        final trackingProvider = context.read<RotationProvider>();
                         final String userId = authProvider.currentUser?.id ?? "GUEST";
 
                         bool success = await trackingProvider.activateAndTrack(

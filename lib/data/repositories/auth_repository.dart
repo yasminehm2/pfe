@@ -7,14 +7,15 @@ import 'package:flutter/foundation.dart';
 /**
  * 💼 THE AUTH REPOSITORY:
  * This class organizes all the "Identity" actions.
- * It sits between the UI and the Network layer.
+ * Updated to match the UserDTO architecture on the Spring Boot backend.
  */
 class AuthRepository {
   final DioClient _client;
 
   AuthRepository(this._client);
 
-  /// 📝 SIGNUP: "Create a new profile in Sfax"
+  /// 📝 SIGNUP: "Create a new profile"
+  /// Sends structured data that matches UserDTO.java
   Future<UserModel> signup({
     required String name,
     required String email,
@@ -29,24 +30,22 @@ class AuthRepository {
           'name': name,
           'email': email,
           'password': password,
-          // Defaults to 0.0 if the user hasn't allowed GPS yet.
           'lat': lat ?? 0.0,
           'lon': lon ?? 0.0,
         },
       );
 
-      // Converts the JSON reply from Spring Boot into a UserModel.
       return UserModel.fromJson(response.data);
     } on DioException catch (e) {
       _handleDioError("Signup", e);
-      rethrow; // Passes the error up so the UI can show a snackbar.
+      rethrow;
     } catch (e) {
       debugPrint("Unexpected Signup Error: $e");
       rethrow;
     }
   }
 
-  /// 🔑 LOGIN: "Verify my existing account"
+  /// 🔑 LOGIN: "Verify existing account"
   Future<UserModel> login(String email, String password) async {
     try {
       final response = await _client.dio.post(
@@ -67,6 +66,20 @@ class AuthRepository {
     }
   }
 
+  /// 🔎 QUICK CHECK: "Is this email already taken?"
+  Future<bool> checkEmailExists(String email) async {
+    try {
+      final response = await _client.dio.get(
+        ApiConstants.checkEmail,
+        queryParameters: {'email': email},
+      );
+      return response.data['exists'] ?? false;
+    } on DioException catch (e) {
+      _handleDioError("Check Email", e);
+      return false;
+    }
+  }
+
   /// 🚪 GUEST ACCESS: "Let me in quickly"
   Future<UserModel> enterAsGuest() async {
     try {
@@ -82,30 +95,32 @@ class AuthRepository {
   }
 
   /// 📍 SYNC LOCATION: "Keep the database updated with my GPS"
-  /// Uses a PATCH request to specifically update only the coordinates.
+  /// 🚀 UPDATED: Uses POST to /api/auth/update-location as per new backend controller.
   Future<void> updateUserLocation({
-    required String userId,
+    required String email,
     required double lat,
     required double lon,
   }) async {
     try {
-      await _client.dio.patch(
-        "${ApiConstants.updateUserLocation}/$userId/location",
+      await _client.dio.post(
+        ApiConstants.updateUserLocation,
         data: {
+          "email": email, // Backend uses email to find the user in updateUserCoordinates
           "lat": lat,
           "lon": lon,
         },
       );
-      debugPrint("✅ Database updated with coordinates.");
+      debugPrint("✅ Database updated with coordinates for: $email");
     } on DioException catch (e) {
       _handleDioError("Update Location", e);
+    } catch (e) {
+      debugPrint("Unexpected Location Update Error: $e");
     }
   }
 
   /**
    * 🛠️ ERROR LOGGER:
-   * A helper method to print exactly what went wrong in your console.
-   * Very helpful for finding out if your Spring Boot server is down!
+   * Helps debug connection issues with the Spring Boot server.
    */
   void _handleDioError(String action, DioException e) {
     debugPrint("---------- Dio Error during $action ----------");

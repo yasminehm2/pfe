@@ -4,10 +4,10 @@ import 'package:provider/provider.dart';
 import 'core/network/dio_client.dart';
 import 'data/repositories/auth_repository.dart';
 import 'data/repositories/map_repository.dart';
-import 'data/repositories/tracking_repository.dart';
+import 'data/repositories/rotation_repository.dart';
 import 'logic/providers/auth_provider.dart';
 import 'logic/providers/map_provider.dart';
-import 'logic/providers/tracking_provider.dart';
+import 'logic/providers/rotation_provider.dart';
 import 'ui/screens/auth/login_screen.dart';
 import 'ui/screens/auth/signup_screen.dart';
 import 'ui/screens/map/bus_map_screen.dart';
@@ -25,7 +25,7 @@ void main() async {
   final dioClient = DioClient();
   final authRepo = AuthRepository(dioClient);
   final mapRepo = MapRepository(dioClient);
-  final trackingRepo = TrackingRepository(dioClient);
+  final trackingRepo = RotationRepository(dioClient);
 
   runApp(
     /**
@@ -37,7 +37,7 @@ void main() async {
       providers: [
         ChangeNotifierProvider(create: (_) => AuthProvider(authRepo)),
         ChangeNotifierProvider(create: (_) => MapProvider(mapRepo)),
-        ChangeNotifierProvider(create: (_) => TrackingProvider(trackingRepo)),
+        ChangeNotifierProvider(create: (_) => RotationProvider(trackingRepo)),
       ],
       child: const SfaxTransportApp(),
     ),

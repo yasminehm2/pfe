@@ -3,7 +3,7 @@ import 'package:provider/provider.dart';
 import '../../../data/models/displayInfo_model.dart';
 import '../../../logic/providers/map_provider.dart';
 import '../../../logic/providers/auth_provider.dart';
-import '../../../logic/providers/tracking_provider.dart';
+import '../../../logic/providers/rotation_provider.dart';
 import '../../../data/models/station_model.dart';
 
 class TripListSheet extends StatefulWidget {
@@ -71,7 +71,6 @@ class _TripListSheetState extends State<TripListSheet> {
   }
 
   Widget _buildListView(MapProvider provider) {
-    // 🚀 FIX: More specific loading check
     if (provider.isLoading && provider.selectedStationTrips.isEmpty) return const Center(child: CircularProgressIndicator());
     if (provider.selectedStationTrips.isEmpty) {
       return const Center(child: Text("No active buses for this station."));
@@ -92,7 +91,6 @@ class _TripListSheetState extends State<TripListSheet> {
             onTap: isCancelled
                 ? null
                 : () {
-              // 🚀 FIX: Only fetch if the trip is actually different
               if (_selectedTrip?.id != trip.id) {
                 setState(() => _selectedTrip = trip);
                 provider.fetchTripItinerary(trip.id!);
@@ -148,8 +146,13 @@ class _TripListSheetState extends State<TripListSheet> {
 
   Widget _buildDetailView(DisplayInfoModel trip, MapProvider provider, AuthProvider auth) {
     final bool isAuthenticated = auth.currentUser != null;
-    final bool isGuest = isAuthenticated && auth.currentUser!.id.toString().toUpperCase().contains('GUEST');
-    final bool isRealUser = isAuthenticated && !isGuest;
+
+    // 🚀 IDENTIFY USER: Robust guest check hides the star for non-registered users.
+    final bool isGuest = !isAuthenticated ||
+        auth.currentUser!.id.trim().isEmpty ||
+        auth.currentUser!.id.toUpperCase().contains('GUEST');
+
+    final bool isRealUser = !isGuest;
 
     return Column(
       children: [
@@ -158,12 +161,14 @@ class _TripListSheetState extends State<TripListSheet> {
             padding: const EdgeInsets.symmetric(horizontal: 20),
             children: [
               const SizedBox(height: 10),
+              // 🚀 Star visibility is tied directly to isRealUser here
               _buildTripSummary(trip, provider, isRealUser),
+
               const Padding(
                 padding: EdgeInsets.symmetric(vertical: 20),
                 child: Text("STOPS SEQUENCE", style: TextStyle(color: Colors.blue, fontWeight: FontWeight.bold, letterSpacing: 1.1)),
               ),
-              // 🚀 FIX: Prevent layout shift by checking both loading and data presence
+
               if (provider.isLoading && provider.currentItinerary.isEmpty)
                 const Center(child: LinearProgressIndicator())
               else
@@ -214,7 +219,7 @@ class _TripListSheetState extends State<TripListSheet> {
             ],
           ),
         ),
-        if (!trip.isCancelled) _buildTrackButton(trip, auth),
+        if (!trip.isCancelled) _buildTrackButton(trip, auth, isGuest),
       ],
     );
   }
@@ -233,6 +238,7 @@ class _TripListSheetState extends State<TripListSheet> {
               _infoLine(Icons.access_time, "Departure", trip.departureTime ?? "N/A"),
             ],
           ),
+          // 🚀 STAR ICON: Only rendered if the user logged in or signed up.
           if (isRealUser)
             Positioned(
               top: 0, right: 0,
@@ -260,7 +266,7 @@ class _TripListSheetState extends State<TripListSheet> {
     );
   }
 
-  Widget _buildTrackButton(DisplayInfoModel trip, AuthProvider auth) {
+  Widget _buildTrackButton(DisplayInfoModel trip, AuthProvider auth, bool isGuest) {
     return Padding(
       padding: const EdgeInsets.all(20),
       child: ElevatedButton(
@@ -270,10 +276,13 @@ class _TripListSheetState extends State<TripListSheet> {
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
         ),
         onPressed: () async {
-          final String userId = auth.currentUser?.id ?? "GUEST";
+          final String userId = isGuest ? "GUEST-TEMPORARY" : auth.currentUser!.id;
+
           context.read<MapProvider>().setTrackedStation(widget.stationId);
-          bool success = await Provider.of<TrackingProvider>(context, listen: false)
+
+          bool success = await Provider.of<RotationProvider>(context, listen: false)
               .activateAndTrack(trip.id!, widget.stationId, userId);
+
           if (success) Navigator.pop(context);
         },
         child: const Text("CONFIRM & TRACK", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),

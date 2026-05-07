@@ -1,51 +1,73 @@
-// lib/ui/widgets/arrival_alert_banner.dart
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-
-import '../../logic/providers/tracking_provider.dart';
+import '../../logic/providers/rotation_provider.dart';
 
 /**
- * 🔔 THE ARRIVAL ALERT BANNER:
- * A floating notification that appears at the top of the map
- * only when the bus is extremely close to the user.
+ * 🔔 THE ARRIVAL ALERT POP-UP:
+ * Now triggers a formal AlertDialog when the bus is close.
  */
-class ArrivalAlertBanner extends StatelessWidget {
+class ArrivalAlertBanner extends StatefulWidget {
   const ArrivalAlertBanner({super.key});
 
   @override
+  State<ArrivalAlertBanner> createState() => _ArrivalAlertBannerState();
+}
+
+class _ArrivalAlertBannerState extends State<ArrivalAlertBanner> {
+  bool _hasShownAlert = false;
+
+  @override
   Widget build(BuildContext context) {
-    // 👂 We listen to the TrackingProvider for live GPS updates.
-    final update = context.watch<TrackingProvider>().currentUpdate;
+    final update = context.watch<RotationProvider>().currentUpdate;
 
-    // 🕵️ CONDITIONAL RENDERING:
-    // If there is no live data, OR if the 'arrivalAlert' flag from
-    // the backend is false, we return an empty box (nothing is shown).
-    if (update == null || !update.arrivalAlert) return const SizedBox.shrink();
+    // Reset the flag if the bus is no longer near (in case of route updates)
+    if (update == null || !update.arrivalAlert) {
+      _hasShownAlert = false;
+      return const SizedBox.shrink();
+    }
 
-    // 🚀 ALERT UI:
-    // This part only runs when the bus is arriving.
-    return Container(
-      padding: const EdgeInsets.all(15),
-      margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-      decoration: BoxDecoration(
-        color: Colors.orangeAccent, // Warning color to grab attention
-        borderRadius: BorderRadius.circular(10),
-        boxShadow: const [BoxShadow(blurRadius: 10, color: Colors.black26)],
-      ),
-      child: Row(
-        children: [
-          // ⚠️ Pulse-like icon to signify urgency
-          const Icon(Icons.notification_important, color: Colors.white),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              // Shows the precise minutes remaining (e.g., 0.5 min)
-              "Your bus is arriving! ETA: ${update.etaMinutes.toStringAsFixed(1)} min",
-              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-            ),
+    // Trigger the pop-out if it hasn't been shown yet for this arrival
+    if (update.arrivalAlert && !_hasShownAlert) {
+      _hasShownAlert = true;
+
+      // We use addPostFrameCallback to trigger the dialog after the build phase
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _showArrivalDialog(context, update.etaMinutes);
+      });
+    }
+
+    return const SizedBox.shrink();
+  }
+
+  void _showArrivalDialog(BuildContext context, double eta) {
+    showDialog(
+      context: context,
+      barrierDismissible: false, // User must acknowledge by pressing OK
+      builder: (BuildContext context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+          title: const Row(
+            children: [
+              Icon(Icons.notification_important, color: Colors.orangeAccent),
+              SizedBox(width: 10),
+              Text("Bus Arriving!"),
+            ],
           ),
-        ],
-      ),
+          content: Text(
+            "Your bus is almost here. Estimated arrival in ${eta.toStringAsFixed(1)} minutes.",
+            style: const TextStyle(fontSize: 16),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text(
+                "OK",
+                style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blueAccent),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 }

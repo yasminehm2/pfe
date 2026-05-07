@@ -5,7 +5,7 @@
  * - PASSENGER: A regular user with a saved account.
  * - GUEST: Someone using the app without signing up.
  */
-enum UserRole { ADMIN, PASSENGER, GUEST }
+enum UserRole { PASSENGER, GUEST }
 
 /**
  * 👤 THE USER MODEL:
@@ -35,9 +35,8 @@ class UserModel {
 
     return UserModel(
       // 🆔 Step 2: Extract the ID
-      // Your backend sends 'userId' for members, but 'tempId' for guests.
-      // This line checks both so the app doesn't crash.
-      id: (json['userId'] ?? json['tempId'] ?? '').toString(),
+      // 🚀 THE FIX: Added json['id'] as the first priority to match Java's UserDTO!
+      id: (json['id'] ?? json['userId'] ?? json['tempId'] ?? '').toString(),
 
       name: json['name'] ?? 'Guest',
       email: json['email'] ?? '',

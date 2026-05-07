@@ -1,5 +1,3 @@
-// lib/ui/screens/map/bus_map_screen.dart
-
 import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
@@ -11,14 +9,14 @@ import 'package:geolocator/geolocator.dart';
 
 import '../../../logic/providers/auth_provider.dart';
 import '../../../logic/providers/map_provider.dart';
-import '../../../logic/providers/tracking_provider.dart';
+import '../../../logic/providers/rotation_provider.dart';
 import '../../../data/models/station_model.dart';
 import 'trip_list_sheet.dart';
 import 'favorites_screen.dart';
 
 /**
  * 🗺️ THE MAIN MAP SCREEN:
- * Features: Route Planning, Search-to-Trip-List, and Live Tracking with Time Labels.
+ * Features: Route Planning, Search-to-Trip-List, and Live Tracking with Auto-Follow.
  */
 class BusMapScreen extends StatefulWidget {
   const BusMapScreen({super.key});
@@ -34,12 +32,14 @@ class _BusMapScreenState extends State<BusMapScreen> with TickerProviderStateMix
   final TextEditingController _searchController = TextEditingController();
 
   Timer? _debounceTimer;
-  // 🚀 Track camera triggers to ensure the map jumps to the blue line on start
   int _lastCameraTrigger = 0;
 
   bool _isPlanningRoute = false;
   bool _isRouteHeaderVisible = false;
   double _mapRotation = 0.0;
+
+  // 🚀 Tracks if the map should automatically center on the moving bus
+  bool _isFollowingBus = false;
 
   StationModel? _startStation;
   StationModel? _endStation;
@@ -51,13 +51,8 @@ class _BusMapScreenState extends State<BusMapScreen> with TickerProviderStateMix
 
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) return;
-
       provider.resetMap();
-
-      // Setup GPS and center map on user
       await _handleLocationPermission();
-
-      // Load stations for the localized area
       if (mounted) {
         provider.fetchNearbyStations(
           _mapController.camera.center.latitude,
@@ -67,8 +62,15 @@ class _BusMapScreenState extends State<BusMapScreen> with TickerProviderStateMix
     });
   }
 
+  /**
+   * 🛡️ PERMISSION HANDLER:
+   * Shows the custom dialog immediately upon the first denial.
+   */
   Future<void> _handleLocationPermission() async {
-    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    bool serviceEnabled;
+    LocationPermission permission;
+
+    serviceEnabled = await Geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -77,15 +79,18 @@ class _BusMapScreenState extends State<BusMapScreen> with TickerProviderStateMix
       return;
     }
 
-    LocationPermission permission = await Geolocator.checkPermission();
+    permission = await Geolocator.checkPermission();
+
     if (permission == LocationPermission.denied) {
       permission = await Geolocator.requestPermission();
-      if (permission == LocationPermission.denied) return;
+      if (permission == LocationPermission.denied) {
+        if (mounted) _showPermissionDialog();
+        return;
+      }
     }
 
     if (permission == LocationPermission.deniedForever) {
-      if (!mounted) return;
-      _showPermissionDialog();
+      if (mounted) _showPermissionDialog(isPermanent: true);
       return;
     }
 
@@ -93,18 +98,31 @@ class _BusMapScreenState extends State<BusMapScreen> with TickerProviderStateMix
     _mapController.move(LatLng(pos.latitude, pos.longitude), 14.5);
   }
 
-  void _showPermissionDialog() {
+  /**
+   * 📢 CUSTOM PERMISSION DIALOG:
+   * Only has an "OK" button. Barrier is non-dismissible to enforce choice.
+   */
+  void _showPermissionDialog({bool isPermanent = false}) {
     showDialog(
       context: context,
+      barrierDismissible: false,
       builder: (context) => AlertDialog(
         title: const Text("Location Required"),
-        content: const Text("Please enable location in settings to see nearby bus stops."),
+        content: Text(isPermanent
+            ? "You have permanently disabled location. You must allow it in your phone settings to use the map."
+            : "To see bus stops near you, you have to allow location permission."),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
-          TextButton(onPressed: () {
-            Geolocator.openAppSettings();
-            Navigator.pop(context);
-          }, child: const Text("Settings")),
+          TextButton(
+            onPressed: () async {
+              Navigator.pop(context);
+              if (isPermanent) {
+                await Geolocator.openAppSettings();
+              } else {
+                await _handleLocationPermission();
+              }
+            },
+            child: const Text("OK", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blueAccent)),
+          ),
         ],
       ),
     );
@@ -147,16 +165,24 @@ class _BusMapScreenState extends State<BusMapScreen> with TickerProviderStateMix
   Widget build(BuildContext context) {
     final authProvider = context.watch<AuthProvider>();
     final mapProvider = context.watch<MapProvider>();
-    final trackingProvider = context.watch<TrackingProvider>();
+    final trackingProvider = context.watch<RotationProvider>();
 
-    // 🚀 AUTO-JUMP LOGIC: Jumps to blue line when tracking starts
+    // 🛰️ AUTO-FOLLOW ON START
     if (mapProvider.cameraMoveTrigger > _lastCameraTrigger) {
       _lastCameraTrigger = mapProvider.cameraMoveTrigger;
+      _isFollowingBus = true; // Auto-enable follow
       if (mapProvider.liveBusLocation != null) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          _mapController.move(mapProvider.liveBusLocation!, 15.0);
+          _mapController.move(mapProvider.liveBusLocation!, 15.5);
         });
       }
+    }
+
+    // 🛰️ CONTINUOUS AUTO-FOLLOW
+    if (trackingProvider.isTracking && _isFollowingBus && mapProvider.liveBusLocation != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _mapController.move(mapProvider.liveBusLocation!, 15.5);
+      });
     }
 
     mapProvider.onStationSelected = (stationId, stationName) {
@@ -188,6 +214,12 @@ class _BusMapScreenState extends State<BusMapScreen> with TickerProviderStateMix
                 initialZoom: 14.5,
                 onPositionChanged: (position, hasGesture) {
                   _onMapMoved(position);
+
+                  // 🚀 If the user manually moves the map, we disable the follow mode
+                  if (hasGesture && _isFollowingBus) {
+                    setState(() => _isFollowingBus = false);
+                  }
+
                   if (hasGesture) _searchFocusNode.unfocus();
                 },
               ),
@@ -197,7 +229,6 @@ class _BusMapScreenState extends State<BusMapScreen> with TickerProviderStateMix
                   userAgentPackageName: 'com.example.bus1',
                 ),
 
-                // 🛤️ 1. THE BLUE ROUTE LINE
                 if (mapProvider.routePoints.isNotEmpty && (trackingProvider.isTracking || trackingProvider.isLoading))
                   PolylineLayer(
                     polylines: [
@@ -209,13 +240,11 @@ class _BusMapScreenState extends State<BusMapScreen> with TickerProviderStateMix
                     ],
                   ),
 
-                // 🚀 2. THE TIME LABELS (Over the blue line)
                 if (trackingProvider.isTracking && mapProvider.currentItinerary.isNotEmpty)
                   MarkerLayer(markers: mapProvider.itineraryTimeLabels),
 
                 const CurrentLocationLayer(),
 
-                // 📍 3. STATION PINS & BUS ICON
                 MarkerLayer(
                   markers: [
                     ...mapProvider.allMarkers,
@@ -251,9 +280,30 @@ class _BusMapScreenState extends State<BusMapScreen> with TickerProviderStateMix
             ),
 
             Positioned(
-              bottom: 25, right: 15,
+              bottom: trackingProvider.isTracking ? 110 : 25,
+              right: 15,
               child: Column(
                 children: [
+                  if (trackingProvider.isTracking && mapProvider.liveBusLocation != null)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: FloatingActionButton(
+                        heroTag: "follow_bus",
+                        mini: true,
+                        backgroundColor: _isFollowingBus ? Colors.orange : Colors.white,
+                        onPressed: () {
+                          setState(() => _isFollowingBus = !_isFollowingBus);
+                          if (_isFollowingBus) {
+                            _mapController.move(mapProvider.liveBusLocation!, 15.5);
+                          }
+                        },
+                        child: Icon(
+                          _isFollowingBus ? Icons.videocam : Icons.videocam_off,
+                          color: _isFollowingBus ? Colors.white : Colors.orange,
+                        ),
+                      ),
+                    ),
+
                   FloatingActionButton(
                     heroTag: "route_toggle", mini: true,
                     backgroundColor: _isPlanningRoute ? Colors.redAccent : Colors.blueAccent,
@@ -283,7 +333,11 @@ class _BusMapScreenState extends State<BusMapScreen> with TickerProviderStateMix
                 child: Center(
                   child: FloatingActionButton.extended(
                     heroTag: "stop_tracking",
-                    onPressed: () { trackingProvider.stopTracking(); mapProvider.clearTrackingVisuals(); },
+                    onPressed: () {
+                      setState(() => _isFollowingBus = false);
+                      trackingProvider.stopTracking();
+                      mapProvider.clearTrackingVisuals();
+                    },
                     backgroundColor: Colors.redAccent,
                     icon: const Icon(Icons.stop, color: Colors.white),
                     label: const Text("Stop Tracking", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
@@ -326,6 +380,7 @@ class _BusMapScreenState extends State<BusMapScreen> with TickerProviderStateMix
 
   Widget _buildDrawer(AuthProvider auth) {
     final bool isRealUser = auth.isRealUser;
+
     return Drawer(
       child: Column(
         children: [
@@ -349,17 +404,16 @@ class _BusMapScreenState extends State<BusMapScreen> with TickerProviderStateMix
 
           ListTile(leading: const Icon(Icons.map_outlined, color: Colors.blueAccent), title: const Text("Map View"), onTap: () => Navigator.pop(context)),
 
+          // 🚀 SIDEBAR LOGIC: Separates guests from real users
           if (isRealUser) ...[
-            // Registered User Menu
             ListTile(leading: const Icon(Icons.favorite, color: Colors.redAccent), title: const Text("Favourite Trips"), onTap: () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (context) => const FavoritesScreen())); }),
             const Spacer(),
-            ListTile(leading: const Icon(Icons.logout, color: Colors.redAccent), title: const Text("Logout"), onTap: () { context.read<TrackingProvider>().stopTracking(); context.read<MapProvider>().resetMap(); auth.logout(); Navigator.pushNamedAndRemoveUntil(context, '/welcome', (route) => false); }),
+            ListTile(leading: const Icon(Icons.logout, color: Colors.redAccent), title: const Text("Logout"), onTap: () { context.read<RotationProvider>().stopTracking(); context.read<MapProvider>().resetMap(); auth.logout(); Navigator.pushNamedAndRemoveUntil(context, '/welcome', (route) => false); }),
           ] else ...[
-            // Guest User Menu
             ListTile(leading: const Icon(Icons.login, color: Colors.green), title: const Text("Login"), onTap: () => Navigator.pushNamed(context, '/login')),
             ListTile(leading: const Icon(Icons.person_add, color: Colors.blue), title: const Text("Sign Up"), onTap: () => Navigator.pushNamed(context, '/signup')),
             const Spacer(),
-            ListTile(leading: const Icon(Icons.arrow_back, color: Colors.grey), title: const Text("Back to Welcome"), onTap: () { context.read<TrackingProvider>().stopTracking(); context.read<MapProvider>().resetMap(); auth.logout(); Navigator.pushNamedAndRemoveUntil(context, '/welcome', (route) => false); }),
+            ListTile(leading: const Icon(Icons.arrow_back, color: Colors.grey), title: const Text("Back to Welcome"), onTap: () { context.read<RotationProvider>().stopTracking(); context.read<MapProvider>().resetMap(); auth.logout(); Navigator.pushNamedAndRemoveUntil(context, '/welcome', (route) => false); }),
           ],
           const SizedBox(height: 20),
         ],

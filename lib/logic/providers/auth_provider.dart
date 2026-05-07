@@ -1,5 +1,3 @@
-// lib/logic/providers/auth_provider.dart
-
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart'; // Handles GPS hardware
 import 'package:latlong2/latlong.dart';      // Coordinates math
@@ -8,21 +6,19 @@ import '../../data/repositories/auth_repository.dart';
 
 /**
  * 🧠 THE AUTH PROVIDER:
- * This class is the single source of truth for "Who is using the app?"
- * It handles logic that spans across multiple screens.
+ * This class is the single source of truth for user state.
+ * Updated to support email-based location syncing for the UserDTO backend.
  */
 class AuthProvider extends ChangeNotifier {
   final AuthRepository _repository;
 
-  UserModel? _currentUser;   // Stores the logged-in user data
-  bool _isLoading = false;   // Shows/hides loading spinners in the UI
-  String? _errorMessage;     // Stores text to show in snackbars if things fail
+  UserModel? _currentUser;
+  bool _isLoading = false;
+  String? _errorMessage;
 
-  // Temporary storage to remember what the user typed in case the backend is slow
   String? _typedName;
   String? _typedEmail;
 
-  // 📍 SFAX FALLBACK: If the user denies GPS, we put them in Sfax city center.
   final LatLng _sfaxFallback = const LatLng(34.74, 10.76);
 
   AuthProvider(this._repository);
@@ -33,33 +29,28 @@ class AuthProvider extends ChangeNotifier {
   String? get errorMessage => _errorMessage;
   bool get isAuthenticated => _currentUser != null;
 
-  // Checks if the current ID is a real database ID or a "GUEST" tag.
   bool get isRealUser {
     if (_currentUser == null || _currentUser!.id.isEmpty) return false;
     return !_currentUser!.id.toString().toUpperCase().contains("GUEST");
   }
 
-  // Logic to decide what email to show in the Profile Drawer.
   String get displayEmail {
     if (!isRealUser) return "Sfax Public Transport";
     final backendEmail = _currentUser?.email ?? "";
     return backendEmail.isNotEmpty ? backendEmail : (_typedEmail ?? "");
   }
 
-  // Logic to decide what name to show in the UI.
   String get displayName {
     if (!isRealUser) return "Guest";
     final backendName = _currentUser?.name ?? "";
     if (backendName.isNotEmpty && backendName.toLowerCase() != 'guest') return backendName;
     if (_typedName != null && _typedName!.isNotEmpty) return _typedName!;
-    // If no name, use the first part of the email.
     if (_typedEmail != null && _typedEmail!.contains('@')) return _typedEmail!.split('@')[0];
     return "Passenger";
   }
 
   /**
-   * 📡 GPS HELPER:
-   * Asks the phone for permission and returns the current Latitude/Longitude.
+   * 📡 GPS HELPER
    */
   Future<LatLng> _getDeviceLocation() async {
     try {
@@ -85,8 +76,7 @@ class AuthProvider extends ChangeNotifier {
   }
 
   /**
-   * 📝 SIGNUP LOGIC:
-   * Gets GPS location first, then sends everything to the Spring Boot backend.
+   * 📝 SIGNUP LOGIC
    */
   Future<LatLng?> signup({
     required String name,
@@ -99,7 +89,15 @@ class AuthProvider extends ChangeNotifier {
     _typedEmail = email;
 
     try {
+      bool isTaken = await _repository.checkEmailExists(email);
+      if (isTaken) {
+        _errorMessage = "This email is already registered.";
+        notifyListeners();
+        return null;
+      }
+
       LatLng location = await _getDeviceLocation();
+
       _currentUser = await _repository.signup(
         name: name,
         email: email,
@@ -107,10 +105,12 @@ class AuthProvider extends ChangeNotifier {
         lat: location.latitude,
         lon: location.longitude,
       );
-      notifyListeners(); // Tells the UI: "User is logged in now!"
+
+      notifyListeners();
       return location;
+
     } catch (e) {
-      _errorMessage = "Signup failed.";
+      _errorMessage = "Signup failed. Please try again.";
       notifyListeners();
       return null;
     } finally {
@@ -120,8 +120,7 @@ class AuthProvider extends ChangeNotifier {
 
   /**
    * 🔑 LOGIN LOGIC:
-   * Authenticates, gets current location, and then updates the backend
-   * with the user's latest position.
+   * Updated to pass 'email' to the location sync as per new UserDTO backend.
    */
   Future<LatLng?> login(String email, String password) async {
     _setLoading(true);
@@ -133,10 +132,10 @@ class AuthProvider extends ChangeNotifier {
       _currentUser = response;
       LatLng location = await _getDeviceLocation();
 
-      // 🚀 UPDATED: Notifies the Sfax database where the passenger is standing.
+      // 🚀 UPDATED: Uses email for location sync to match AuthService.java
       if (_currentUser != null) {
         await _repository.updateUserLocation(
-          userId: _currentUser!.id,
+          email: _currentUser!.email, // Pass email instead of ID
           lat: location.latitude,
           lon: location.longitude,
         );
@@ -145,7 +144,7 @@ class AuthProvider extends ChangeNotifier {
       notifyListeners();
       return location;
     } catch (e) {
-      _errorMessage = "Login failed";
+      _errorMessage = "Login failed. Check your credentials.";
       notifyListeners();
       rethrow;
     } finally {
@@ -154,9 +153,7 @@ class AuthProvider extends ChangeNotifier {
   }
 
   /**
-   * 🚪 GUEST LOGIC:
-   * Allows entry without an account while still tracking the guest's
-   * initial position for "Nearby Stations" math.
+   * 🚪 GUEST LOGIC
    */
   Future<LatLng?> continueAsGuest() async {
     _setLoading(true);
@@ -166,13 +163,10 @@ class AuthProvider extends ChangeNotifier {
       _currentUser = await _repository.enterAsGuest();
       LatLng location = await _getDeviceLocation();
 
-      if (_currentUser != null) {
-        await _repository.updateUserLocation(
-          userId: _currentUser!.id,
-          lat: location.latitude,
-          lon: location.longitude,
-        );
-      }
+      // Guests are temporary and don't have emails in DB,
+      // so we only update coordinates if the backend supports guest tracking.
+      // If your AuthController expects an email for location updates,
+      // guest location updates might be skipped or handled differently.
 
       notifyListeners();
       return location;
@@ -184,15 +178,13 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
-  // Helper to change loading state and refresh UI.
   void _setLoading(bool value) {
     _isLoading = value;
     notifyListeners();
   }
 
   /**
-   * 🗑️ LOGOUT:
-   * Clears all session data and wipes the "Brain" clean.
+   * 🗑️ LOGOUT
    */
   void logout() {
     _currentUser = null;

@@ -5,7 +5,6 @@ package org.yasmine.entity;
  * in the system. It controls what they are allowed to do.
  */
 public enum UserRole {
-    ADMIN,
     PASSENGER,
     GUEST
 }
