@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../../logic/providers/rotation_provider.dart';
+import '../../providers/rotation_provider.dart';
 
 /**
  * 🔔 THE ARRIVAL ALERT POP-UP:

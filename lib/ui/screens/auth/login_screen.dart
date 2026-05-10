@@ -1,14 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:latlong2/latlong.dart';
-import '../../../logic/providers/auth_provider.dart';
-import '../../../logic/providers/map_provider.dart';
+import '../../../providers/user_provider.dart';
+import '../../../providers/station_provider.dart';
+import '../../../providers/displayInfo_provider.dart';
 
-/**
- * 🔑 THE LOGIN SCREEN:
- * This widget handles the user interface for signing in.
- * It ensures that data is valid before sending it to the backend.
- */
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
 
@@ -17,52 +13,37 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  // 📋 THE FORM KEY: Tracks the state of the text fields for validation.
   final _formKey = GlobalKey<FormState>();
-
-  // ✍️ TEXT CONTROLLERS: These "listen" to what the user types.
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
-
-  // 👁️ UI STATE: Toggles whether the password is dots or readable text.
   bool _isPasswordVisible = false;
 
-  /**
-   * 🚀 THE LOGIN LOGIC:
-   * This function orchestrates the flow from clicking "Sign In" to moving to the Map.
-   */
   Future<void> _handleLogin() async {
-    // 1. Check if the email looks like an email and the password isn't empty.
     if (!_formKey.currentState!.validate()) return;
 
     try {
-      final authProvider = context.read<AuthProvider>();
-
-      // 2. Call the AuthProvider to talk to the Spring Boot server.
-      // This also fetches the user's current GPS location.
-      final LatLng? location = await authProvider.login(
+      final userProvider = context.read<UserProvider>();
+      final LatLng? location = await userProvider.login(
           _emailController.text.trim(),
           _passwordController.text.trim()
       );
 
-      // 3. If login is successful (we got a location back):
       if (location != null && mounted) {
-        final mapProvider = context.read<MapProvider>();
+        final stationProvider = context.read<StationProvider>();
+        final displayProvider = context.read<DisplayInfoProvider>();
 
-        // 🧹 PREPARE THE MAP: Wipe old data and center the map on the user's current spot.
-        mapProvider.resetMap();
-        mapProvider.updateCenter(location);
+        // 🧹 PREPARE THE MAP AND TRACKING VISUALS
+        stationProvider.resetMap();
+        displayProvider.clearTrackingVisuals();
+        stationProvider.updateCenter(location);
 
-        // ⭐ LOAD FAVORITES: Fetch this specific passenger's saved bus lines.
-        if (authProvider.currentUser != null) {
-          await mapProvider.loadFavorites(authProvider.currentUser!.id);
+        if (userProvider.currentUser != null) {
+          await displayProvider.loadFavorites(userProvider.currentUser!.id);
         }
 
-        // 🗺️ NAVIGATION: Move to the MapScreen and delete the LoginScreen from history.
         Navigator.pushNamedAndRemoveUntil(context, '/map', (route) => false);
       }
     } catch (e) {
-      // ❌ ERROR HANDLING: Show a red snackbar if credentials are wrong or server is down.
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -76,15 +57,14 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // We "watch" the loading state to show a spinner during the network call.
-    final isLoading = context.watch<AuthProvider>().isLoading;
+    final isLoading = context.watch<UserProvider>().isLoading;
 
     return Scaffold(
       appBar: AppBar(backgroundColor: Colors.transparent, elevation: 0),
       body: SingleChildScrollView(
         padding: const EdgeInsets.symmetric(horizontal: 30),
         child: Form(
-          key: _formKey, // Connects the validation logic to this form
+          key: _formKey,
           child: Column(
             children: [
               const Icon(Icons.account_circle, size: 80, color: Colors.blueAccent),
@@ -92,7 +72,6 @@ class _LoginScreenState extends State<LoginScreen> {
               const Text("Welcome Back", style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold)),
               const SizedBox(height: 40),
 
-              // 📧 EMAIL INPUT
               TextFormField(
                 controller: _emailController,
                 decoration: InputDecoration(
@@ -104,10 +83,9 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
               const SizedBox(height: 20),
 
-              // 🔒 PASSWORD INPUT
               TextFormField(
                 controller: _passwordController,
-                obscureText: !_isPasswordVisible, // Hides password with dots
+                obscureText: !_isPasswordVisible,
                 decoration: InputDecoration(
                     labelText: "Password",
                     prefixIcon: const Icon(Icons.lock),
@@ -117,7 +95,6 @@ class _LoginScreenState extends State<LoginScreen> {
                         color: Colors.grey,
                       ),
                       onPressed: () {
-                        // Refreshes the eye icon when clicked
                         setState(() {
                           _isPasswordVisible = !_isPasswordVisible;
                         });
@@ -129,7 +106,6 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
               const SizedBox(height: 40),
 
-              // 🔄 ACTION BUTTON OR SPINNER
               isLoading
                   ? const CircularProgressIndicator()
                   : ElevatedButton(

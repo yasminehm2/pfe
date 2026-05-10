@@ -4,15 +4,11 @@ class ApiConstants {
   // 10.26.12.7 is your local network address, and 8080 is the default Spring port.
   static const String baseUrl = "http://192.168.100.13:8080/api";
   // Quick lookup to prevent unnecessary GPS requests
-  static const String checkEmail = "$baseUrl/auth/check-email";
-  // 🔐 AUTHENTICATION:
-  // These link directly to your AuthController.java.
-  static const String login = "$baseUrl/auth/login";   // To check passwords.
-  static const String signup = "$baseUrl/auth/signup"; // To create accounts.
-  static const String guest = "$baseUrl/auth/guest";   // To get a temporary "Visitor" ID.
-
-  // To send the user's phone GPS back to the server.
-  static const String updateUserLocation = "$baseUrl/auth/update-location";
+  static const String checkEmail = "$baseUrl/users/check-email";
+  static const String login = "$baseUrl/users/login";
+  static const String signup = "$baseUrl/users/signup";
+  static const String guest = "$baseUrl/users/guest";
+  static const String updateUserLocation = "$baseUrl/users/update-location";
 
   // 📍 MAP & STATIONS:
   // These link to your StationController.java.

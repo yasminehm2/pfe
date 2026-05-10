@@ -20,5 +20,5 @@ public interface AgencyRepository extends JpaRepository<Agency, String> {
      * * @param deccent The Center ID you want to search for.
      * @return A list of all Agencies that belong to that specific Center.
      */
-    List<Agency> findByDeccent(Integer deccent);
+    
 }

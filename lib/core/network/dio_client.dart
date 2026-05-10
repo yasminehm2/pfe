@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart'; // Used to print messages only in debug mode
+import 'package:shared_preferences/shared_preferences.dart'; // 🚀 IMPORTED FOR JWT
 import '../constants/api_constants.dart';
 
 /**
@@ -17,7 +18,6 @@ class DioClient {
 
       // ⏳ PATIENCE SETTINGS:
       // We give the server 40 seconds to connect/respond.
-      // This is helpful if the Sfax database or GPS lookup is slow.
       connectTimeout: const Duration(seconds: 40),
       receiveTimeout: const Duration(seconds: 40),
       sendTimeout: const Duration(seconds: 40),
@@ -31,9 +31,18 @@ class DioClient {
   ) {
 
     // 🕵️ THE INTERCEPTOR (The Spy):
-    // This "spies" on every request to help you debug.
+    // This "spies" on every request to help you debug and attaches the JWT token.
     _dio.interceptors.add(InterceptorsWrapper(
-      onRequest: (options, handler) {
+      onRequest: (options, handler) async { // 🚀 MADE ASYNC TO READ STORAGE
+
+        // 🚀 JWT INJECTION: Grab the token from storage and attach it to the header
+        final prefs = await SharedPreferences.getInstance();
+        final token = prefs.getString('auth_token');
+
+        if (token != null && token.isNotEmpty) {
+          options.headers['Authorization'] = 'Bearer $token';
+        }
+
         // Prints "🚀 SENDING REQUEST" in your console when you click a button.
         debugPrint("🚀 SENDING REQUEST: [${options.method}] ${options.uri}");
         return handler.next(options);
@@ -73,7 +82,6 @@ class DioClient {
         return "Server is taking too long to respond. Please check your Spring Boot app.";
 
       case DioExceptionType.connectionError:
-      // Reminds you to check if the IP address in ApiConstants matches your PC.
         return "Cannot reach the server. Ensure your backend is running at ${ApiConstants.baseUrl}";
 
       case DioExceptionType.badResponse:

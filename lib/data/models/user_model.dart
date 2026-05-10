@@ -16,12 +16,14 @@ class UserModel {
   final String name;  // Display name
   final String email; // User's email address
   final UserRole role; // Their permission level
+  final String? token; // 🚀 ADDED: The JWT token for secure sessions
 
   UserModel({
     required this.id,
     required this.name,
     required this.email,
-    required this.role
+    required this.role,
+    this.token, // 🚀 ADDED
   });
 
   /**
@@ -35,15 +37,15 @@ class UserModel {
 
     return UserModel(
       // 🆔 Step 2: Extract the ID
-      // 🚀 THE FIX: Added json['id'] as the first priority to match Java's UserDTO!
       id: (json['id'] ?? json['userId'] ?? json['tempId'] ?? '').toString(),
 
       name: json['name'] ?? 'Guest',
       email: json['email'] ?? '',
 
-      // 🛂 Step 3: Safe Role Conversion
-      // It looks through the UserRole enum to find a match.
-      // If it doesn't find a match, it defaults to GUEST for safety.
+      // 🚀 Step 3: Extract the JWT Token
+      token: json['token'],
+
+      // 🛂 Step 4: Safe Role Conversion
       role: UserRole.values.firstWhere(
             (e) => e.name == roleString,
         orElse: () => UserRole.GUEST,

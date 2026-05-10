@@ -16,4 +16,5 @@ public class UserDTO {
     private Double lon;
     private UserRole role;
     private String message;
+    private String token;
 }

@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../data/models/displayInfo_model.dart';
-import '../../../logic/providers/map_provider.dart';
-import '../../../logic/providers/auth_provider.dart';
-import '../../../logic/providers/rotation_provider.dart';
+import '../../../providers/station_provider.dart';
+import '../../../providers/displayInfo_provider.dart';
+import '../../../providers/user_provider.dart';
+import '../../../providers/rotation_provider.dart';
 import '../../../data/models/station_model.dart';
 
 class TripListSheet extends StatefulWidget {
@@ -21,8 +22,9 @@ class _TripListSheetState extends State<TripListSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final mapProvider = context.watch<MapProvider>();
-    final authProvider = context.watch<AuthProvider>();
+    final displayProvider = context.watch<DisplayInfoProvider>();
+    final stationProvider = context.watch<StationProvider>();
+    final userProvider = context.watch<UserProvider>();
 
     return Container(
       height: MediaQuery.of(context).size.height * 0.80,
@@ -62,38 +64,48 @@ class _TripListSheetState extends State<TripListSheet> {
           const Divider(),
           Expanded(
             child: _selectedTrip == null
-                ? _buildListView(mapProvider)
-                : _buildDetailView(_selectedTrip!, mapProvider, authProvider),
+                ? _buildListView(displayProvider, stationProvider)
+                : _buildDetailView(_selectedTrip!, displayProvider, userProvider),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildListView(MapProvider provider) {
-    if (provider.isLoading && provider.selectedStationTrips.isEmpty) return const Center(child: CircularProgressIndicator());
-    if (provider.selectedStationTrips.isEmpty) {
+  Widget _buildListView(DisplayInfoProvider displayProvider, StationProvider stationProvider) {
+    if (displayProvider.isLoading && displayProvider.selectedStationTrips.isEmpty) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (displayProvider.selectedStationTrips.isEmpty) {
       return const Center(child: Text("No active buses for this station."));
     }
 
     return ListView.builder(
       padding: const EdgeInsets.all(15),
-      itemCount: provider.selectedStationTrips.length,
+      itemCount: displayProvider.selectedStationTrips.length,
       itemBuilder: (context, index) {
-        final trip = provider.selectedStationTrips[index];
+        final trip = displayProvider.selectedStationTrips[index];
         final bool isCancelled = trip.isCancelled;
 
         return Card(
           elevation: isCancelled ? 0 : 2,
-          color: isCancelled ? Colors.grey[50] : Colors.white,
+          color: isCancelled ? Colors.grey[100] : Colors.white,
           margin: const EdgeInsets.only(bottom: 10),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+            side: isCancelled ? BorderSide(color: Colors.grey[300]!) : BorderSide.none,
+          ),
           child: ListTile(
             onTap: isCancelled
                 ? null
-                : () {
+                : () async {
               if (_selectedTrip?.id != trip.id) {
                 setState(() => _selectedTrip = trip);
-                provider.fetchTripItinerary(trip.id!);
+
+                // 🚀 THE FIX: Chain the itinerary to the road-path drawer
+                final itinerary = await displayProvider.fetchTripItinerary(trip.id!);
+                stationProvider.fetchRoadAlignedPath(itinerary);
+                displayProvider.triggerCameraToBus();
               } else {
                 setState(() => _selectedTrip = trip);
               }
@@ -111,7 +123,7 @@ class _TripListSheetState extends State<TripListSheet> {
                   "Departure: ${trip.departureTime}",
                   style: TextStyle(
                     fontWeight: FontWeight.bold,
-                    color: isCancelled ? Colors.grey : Colors.black,
+                    color: isCancelled ? Colors.grey[500] : Colors.black,
                     decoration: isCancelled ? TextDecoration.lineThrough : null,
                   ),
                 ),
@@ -133,10 +145,10 @@ class _TripListSheetState extends State<TripListSheet> {
             ),
             subtitle: Text(
               isCancelled ? "Service Interrupted" : "Bus: ${trip.busPlate}",
-              style: TextStyle(color: isCancelled ? Colors.grey : null),
+              style: TextStyle(color: isCancelled ? Colors.grey[400] : Colors.black54),
             ),
             trailing: isCancelled
-                ? const Icon(Icons.block, color: Colors.redAccent)
+                ? Icon(Icons.block, color: Colors.red[300])
                 : const Icon(Icons.chevron_right),
           ),
         );
@@ -144,13 +156,11 @@ class _TripListSheetState extends State<TripListSheet> {
     );
   }
 
-  Widget _buildDetailView(DisplayInfoModel trip, MapProvider provider, AuthProvider auth) {
-    final bool isAuthenticated = auth.currentUser != null;
-
-    // 🚀 IDENTIFY USER: Robust guest check hides the star for non-registered users.
+  Widget _buildDetailView(DisplayInfoModel trip, DisplayInfoProvider provider, UserProvider user) {
+    final bool isAuthenticated = user.currentUser != null;
     final bool isGuest = !isAuthenticated ||
-        auth.currentUser!.id.trim().isEmpty ||
-        auth.currentUser!.id.toUpperCase().contains('GUEST');
+        user.currentUser!.id.trim().isEmpty ||
+        user.currentUser!.id.toUpperCase().contains('GUEST');
 
     final bool isRealUser = !isGuest;
 
@@ -161,7 +171,6 @@ class _TripListSheetState extends State<TripListSheet> {
             padding: const EdgeInsets.symmetric(horizontal: 20),
             children: [
               const SizedBox(height: 10),
-              // 🚀 Star visibility is tied directly to isRealUser here
               _buildTripSummary(trip, provider, isRealUser),
 
               const Padding(
@@ -219,13 +228,13 @@ class _TripListSheetState extends State<TripListSheet> {
             ],
           ),
         ),
-        if (!trip.isCancelled) _buildTrackButton(trip, auth, isGuest),
+        if (!trip.isCancelled) _buildTrackButton(trip, user, isGuest),
       ],
     );
   }
 
-  Widget _buildTripSummary(DisplayInfoModel trip, MapProvider provider, bool isRealUser) {
-    final bool currentlyFavorite = provider.isFavorite(trip.id!);
+  Widget _buildTripSummary(DisplayInfoModel trip, DisplayInfoProvider provider, bool isRealUser) {
+    final bool currentlyFavorite = provider.favoriteTrips.any((t) => t.id == trip.id);
     return Container(
       padding: const EdgeInsets.all(15),
       decoration: BoxDecoration(color: Colors.grey[100], borderRadius: BorderRadius.circular(15)),
@@ -238,7 +247,6 @@ class _TripListSheetState extends State<TripListSheet> {
               _infoLine(Icons.access_time, "Departure", trip.departureTime ?? "N/A"),
             ],
           ),
-          // 🚀 STAR ICON: Only rendered if the user logged in or signed up.
           if (isRealUser)
             Positioned(
               top: 0, right: 0,
@@ -266,7 +274,7 @@ class _TripListSheetState extends State<TripListSheet> {
     );
   }
 
-  Widget _buildTrackButton(DisplayInfoModel trip, AuthProvider auth, bool isGuest) {
+  Widget _buildTrackButton(DisplayInfoModel trip, UserProvider user, bool isGuest) {
     return Padding(
       padding: const EdgeInsets.all(20),
       child: ElevatedButton(
@@ -276,9 +284,9 @@ class _TripListSheetState extends State<TripListSheet> {
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
         ),
         onPressed: () async {
-          final String userId = isGuest ? "GUEST-TEMPORARY" : auth.currentUser!.id;
+          final String userId = isGuest ? "GUEST-TEMPORARY" : user.currentUser!.id;
 
-          context.read<MapProvider>().setTrackedStation(widget.stationId);
+          context.read<DisplayInfoProvider>().setTrackedStation(widget.stationId);
 
           bool success = await Provider.of<RotationProvider>(context, listen: false)
               .activateAndTrack(trip.id!, widget.stationId, userId);

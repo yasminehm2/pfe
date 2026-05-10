@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_map_location_marker/flutter_map_location_marker.dart';
@@ -7,17 +6,15 @@ import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
 import 'package:geolocator/geolocator.dart';
 
-import '../../../logic/providers/auth_provider.dart';
-import '../../../logic/providers/map_provider.dart';
-import '../../../logic/providers/rotation_provider.dart';
+import '../../../providers/user_provider.dart';
+import '../../../providers/station_provider.dart';
+import '../../../providers/displayInfo_provider.dart';
+import '../../../providers/rotation_provider.dart';
 import '../../../data/models/station_model.dart';
 import 'trip_list_sheet.dart';
 import 'favorites_screen.dart';
+import '../../widgets/arrival_alert_banner.dart';
 
-/**
- * 🗺️ THE MAIN MAP SCREEN:
- * Features: Route Planning, Search-to-Trip-List, and Live Tracking with Auto-Follow.
- */
 class BusMapScreen extends StatefulWidget {
   const BusMapScreen({super.key});
 
@@ -37,8 +34,6 @@ class _BusMapScreenState extends State<BusMapScreen> with TickerProviderStateMix
   bool _isPlanningRoute = false;
   bool _isRouteHeaderVisible = false;
   double _mapRotation = 0.0;
-
-  // 🚀 Tracks if the map should automatically center on the moving bus
   bool _isFollowingBus = false;
 
   StationModel? _startStation;
@@ -47,14 +42,15 @@ class _BusMapScreenState extends State<BusMapScreen> with TickerProviderStateMix
   @override
   void initState() {
     super.initState();
-    final provider = Provider.of<MapProvider>(context, listen: false);
-
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) return;
-      provider.resetMap();
+      // 🚀 Reset both providers
+      context.read<StationProvider>().resetMap();
+      context.read<DisplayInfoProvider>().clearTrackingVisuals();
+
       await _handleLocationPermission();
       if (mounted) {
-        provider.fetchNearbyStations(
+        context.read<StationProvider>().fetchNearbyStations(
           _mapController.camera.center.latitude,
           _mapController.camera.center.longitude,
         );
@@ -62,10 +58,6 @@ class _BusMapScreenState extends State<BusMapScreen> with TickerProviderStateMix
     });
   }
 
-  /**
-   * 🛡️ PERMISSION HANDLER:
-   * Shows the custom dialog immediately upon the first denial.
-   */
   Future<void> _handleLocationPermission() async {
     bool serviceEnabled;
     LocationPermission permission;
@@ -80,7 +72,6 @@ class _BusMapScreenState extends State<BusMapScreen> with TickerProviderStateMix
     }
 
     permission = await Geolocator.checkPermission();
-
     if (permission == LocationPermission.denied) {
       permission = await Geolocator.requestPermission();
       if (permission == LocationPermission.denied) {
@@ -98,10 +89,6 @@ class _BusMapScreenState extends State<BusMapScreen> with TickerProviderStateMix
     _mapController.move(LatLng(pos.latitude, pos.longitude), 14.5);
   }
 
-  /**
-   * 📢 CUSTOM PERMISSION DIALOG:
-   * Only has an "OK" button. Barrier is non-dismissible to enforce choice.
-   */
   void _showPermissionDialog({bool isPermanent = false}) {
     showDialog(
       context: context,
@@ -136,24 +123,13 @@ class _BusMapScreenState extends State<BusMapScreen> with TickerProviderStateMix
     super.dispose();
   }
 
-  void _animatedMapRotation(double destRotation) {
-    final controller = AnimationController(duration: const Duration(milliseconds: 500), vsync: this);
-    final animation = Tween<double>(begin: _mapController.camera.rotation, end: destRotation)
-        .animate(CurvedAnimation(parent: controller, curve: Curves.easeInOut));
-    animation.addListener(() => _mapController.rotate(animation.value));
-    controller.forward().then((_) {
-      setState(() => _mapRotation = destRotation);
-      controller.dispose();
-    });
-  }
-
   void _onMapMoved(MapCamera camera) {
     if ((camera.rotation - _mapRotation).abs() > 0.1) setState(() => _mapRotation = camera.rotation);
     if (_debounceTimer?.isActive ?? false) _debounceTimer!.cancel();
     _debounceTimer = Timer(const Duration(milliseconds: 800), () {
       if (!mounted) return;
       if (!_isPlanningRoute) {
-        Provider.of<MapProvider>(context, listen: false).fetchNearbyStations(
+        context.read<StationProvider>().fetchNearbyStations(
           camera.center.latitude,
           camera.center.longitude,
         );
@@ -163,29 +139,30 @@ class _BusMapScreenState extends State<BusMapScreen> with TickerProviderStateMix
 
   @override
   Widget build(BuildContext context) {
-    final authProvider = context.watch<AuthProvider>();
-    final mapProvider = context.watch<MapProvider>();
+    final userProvider = context.watch<UserProvider>();
+    final stationProvider = context.watch<StationProvider>();
+    final displayProvider = context.watch<DisplayInfoProvider>();
     final trackingProvider = context.watch<RotationProvider>();
 
     // 🛰️ AUTO-FOLLOW ON START
-    if (mapProvider.cameraMoveTrigger > _lastCameraTrigger) {
-      _lastCameraTrigger = mapProvider.cameraMoveTrigger;
-      _isFollowingBus = true; // Auto-enable follow
-      if (mapProvider.liveBusLocation != null) {
+    if (displayProvider.cameraMoveTrigger > _lastCameraTrigger) {
+      _lastCameraTrigger = displayProvider.cameraMoveTrigger;
+      _isFollowingBus = true;
+      if (displayProvider.liveBusLocation != null) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          _mapController.move(mapProvider.liveBusLocation!, 15.5);
+          _mapController.move(displayProvider.liveBusLocation!, 15.5);
         });
       }
     }
 
     // 🛰️ CONTINUOUS AUTO-FOLLOW
-    if (trackingProvider.isTracking && _isFollowingBus && mapProvider.liveBusLocation != null) {
+    if (trackingProvider.isTracking && _isFollowingBus && displayProvider.liveBusLocation != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        _mapController.move(mapProvider.liveBusLocation!, 15.5);
+        _mapController.move(displayProvider.liveBusLocation!, 15.5);
       });
     }
 
-    mapProvider.onStationSelected = (stationId, stationName) {
+    stationProvider.onStationSelected = (stationId, stationName) {
       if (!mounted) return;
       if (_isPlanningRoute) return;
 
@@ -196,12 +173,12 @@ class _BusMapScreenState extends State<BusMapScreen> with TickerProviderStateMix
         backgroundColor: Colors.transparent,
         builder: (context) => TripListSheet(stationName: stationName, stationId: stationId),
       );
-      mapProvider.fetchTripsForStation(stationId);
+      displayProvider.fetchTripsForStation(stationId);
     };
 
     return Scaffold(
       key: _scaffoldKey,
-      drawer: _buildDrawer(authProvider),
+      drawer: _buildDrawer(userProvider),
       body: GestureDetector(
         onTap: () => _searchFocusNode.unfocus(),
         behavior: HitTestBehavior.opaque,
@@ -210,16 +187,13 @@ class _BusMapScreenState extends State<BusMapScreen> with TickerProviderStateMix
             FlutterMap(
               mapController: _mapController,
               options: MapOptions(
-                initialCenter: mapProvider.currentViewCenter,
+                initialCenter: stationProvider.currentViewCenter,
                 initialZoom: 14.5,
                 onPositionChanged: (position, hasGesture) {
                   _onMapMoved(position);
-
-                  // 🚀 If the user manually moves the map, we disable the follow mode
                   if (hasGesture && _isFollowingBus) {
                     setState(() => _isFollowingBus = false);
                   }
-
                   if (hasGesture) _searchFocusNode.unfocus();
                 },
               ),
@@ -229,28 +203,28 @@ class _BusMapScreenState extends State<BusMapScreen> with TickerProviderStateMix
                   userAgentPackageName: 'com.example.bus1',
                 ),
 
-                if (mapProvider.routePoints.isNotEmpty && (trackingProvider.isTracking || trackingProvider.isLoading))
+                if (stationProvider.routePoints.isNotEmpty && (trackingProvider.isTracking || displayProvider.isLoading))
                   PolylineLayer(
                     polylines: [
                       Polyline(
-                        points: mapProvider.routePoints,
+                        points: stationProvider.routePoints,
                         color: Colors.blueAccent.withOpacity(0.8),
                         strokeWidth: 6.0,
                       ),
                     ],
                   ),
 
-                if (trackingProvider.isTracking && mapProvider.currentItinerary.isNotEmpty)
-                  MarkerLayer(markers: mapProvider.itineraryTimeLabels),
+                if (trackingProvider.isTracking && displayProvider.currentItinerary.isNotEmpty)
+                  MarkerLayer(markers: displayProvider.itineraryTimeLabels),
 
                 const CurrentLocationLayer(),
 
                 MarkerLayer(
                   markers: [
-                    ...mapProvider.allMarkers,
-                    if (mapProvider.liveBusLocation != null && trackingProvider.isTracking)
+                    ...stationProvider.allMarkers,
+                    if (displayProvider.liveBusLocation != null && trackingProvider.isTracking)
                       Marker(
-                        point: mapProvider.liveBusLocation!,
+                        point: displayProvider.liveBusLocation!,
                         width: 65, height: 65,
                         child: OverflowBox(
                           maxWidth: 80, maxHeight: 80,
@@ -272,11 +246,14 @@ class _BusMapScreenState extends State<BusMapScreen> with TickerProviderStateMix
               ],
             ),
 
-            if (mapProvider.isLoading) const Center(child: CircularProgressIndicator(color: Colors.blueAccent)),
+            if (stationProvider.isLoading || displayProvider.isLoading)
+              const Center(child: CircularProgressIndicator(color: Colors.blueAccent)),
+
+            const ArrivalAlertBanner(),
 
             Positioned(
               top: MediaQuery.of(context).padding.top + 10, left: 15, right: 15,
-              child: _isRouteHeaderVisible ? _buildRouteHeader(mapProvider) : _buildFloatingSearchBar(mapProvider),
+              child: _isRouteHeaderVisible ? _buildRouteHeader(stationProvider, displayProvider) : _buildFloatingSearchBar(stationProvider, displayProvider),
             ),
 
             Positioned(
@@ -284,7 +261,7 @@ class _BusMapScreenState extends State<BusMapScreen> with TickerProviderStateMix
               right: 15,
               child: Column(
                 children: [
-                  if (trackingProvider.isTracking && mapProvider.liveBusLocation != null)
+                  if (trackingProvider.isTracking && displayProvider.liveBusLocation != null)
                     Padding(
                       padding: const EdgeInsets.only(bottom: 12),
                       child: FloatingActionButton(
@@ -294,7 +271,7 @@ class _BusMapScreenState extends State<BusMapScreen> with TickerProviderStateMix
                         onPressed: () {
                           setState(() => _isFollowingBus = !_isFollowingBus);
                           if (_isFollowingBus) {
-                            _mapController.move(mapProvider.liveBusLocation!, 15.5);
+                            _mapController.move(displayProvider.liveBusLocation!, 15.5);
                           }
                         },
                         child: Icon(
@@ -311,7 +288,7 @@ class _BusMapScreenState extends State<BusMapScreen> with TickerProviderStateMix
                       setState(() {
                         if (_isPlanningRoute) {
                           _isPlanningRoute = false; _isRouteHeaderVisible = false;
-                          _startStation = null; _endStation = null; mapProvider.routePoints = [];
+                          _startStation = null; _endStation = null; stationProvider.routePoints = [];
                         } else { _isPlanningRoute = true; _isRouteHeaderVisible = true; }
                       });
                     },
@@ -336,7 +313,8 @@ class _BusMapScreenState extends State<BusMapScreen> with TickerProviderStateMix
                     onPressed: () {
                       setState(() => _isFollowingBus = false);
                       trackingProvider.stopTracking();
-                      mapProvider.clearTrackingVisuals();
+                      stationProvider.routePoints = [];
+                      displayProvider.clearTrackingVisuals();
                     },
                     backgroundColor: Colors.redAccent,
                     icon: const Icon(Icons.stop, color: Colors.white),
@@ -350,19 +328,19 @@ class _BusMapScreenState extends State<BusMapScreen> with TickerProviderStateMix
     );
   }
 
-  Widget _buildFloatingSearchBar(MapProvider provider) {
+  Widget _buildFloatingSearchBar(StationProvider stationProvider, DisplayInfoProvider displayProvider) {
     return Material(
       color: Colors.transparent,
       child: Container(
         decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(30), boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 10)]),
         child: Autocomplete<StationModel>(
           displayStringForOption: (s) => s.nameFr,
-          optionsBuilder: (TextEditingValue val) => val.text.isEmpty ? const Iterable<StationModel>.empty() : provider.allStations.where((s) => s.nameFr.toLowerCase().contains(val.text.toLowerCase()) || s.nameAr.contains(val.text)),
+          optionsBuilder: (TextEditingValue val) => val.text.isEmpty ? const Iterable<StationModel>.empty() : stationProvider.allStations.where((s) => s.nameFr.toLowerCase().contains(val.text.toLowerCase()) || s.nameAr.contains(val.text)),
           onSelected: (station) {
             _searchFocusNode.unfocus(); _searchController.clear();
             _mapController.move(LatLng(station.latitude, station.longitude), 16.5);
             showModalBottomSheet(context: context, isScrollControlled: true, backgroundColor: Colors.transparent, builder: (context) => TripListSheet(stationName: station.nameFr, stationId: station.id));
-            provider.fetchTripsForStation(station.id);
+            displayProvider.fetchTripsForStation(station.id);
           },
           fieldViewBuilder: (ctx, controller, focusNode, onFieldSubmitted) => TextField(
             controller: controller, focusNode: focusNode,
@@ -378,9 +356,8 @@ class _BusMapScreenState extends State<BusMapScreen> with TickerProviderStateMix
     );
   }
 
-  Widget _buildDrawer(AuthProvider auth) {
-    final bool isRealUser = auth.isRealUser;
-
+  Widget _buildDrawer(UserProvider user) {
+    final bool isRealUser = user.isRealUser;
     return Drawer(
       child: Column(
         children: [
@@ -390,8 +367,8 @@ class _BusMapScreenState extends State<BusMapScreen> with TickerProviderStateMix
               child: SizedBox(width: double.infinity, child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.end, children: [
                 const CircleAvatar(radius: 32, backgroundColor: Colors.white, child: Icon(Icons.person, size: 40, color: Colors.blueAccent)),
                 const SizedBox(height: 12),
-                Text(auth.displayName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Colors.white)),
-                Text(auth.displayEmail, style: const TextStyle(fontSize: 14, color: Colors.white70)),
+                Text(user.displayName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Colors.white)),
+                Text(user.displayEmail, style: const TextStyle(fontSize: 14, color: Colors.white70)),
               ])),
             )
           else
@@ -404,16 +381,15 @@ class _BusMapScreenState extends State<BusMapScreen> with TickerProviderStateMix
 
           ListTile(leading: const Icon(Icons.map_outlined, color: Colors.blueAccent), title: const Text("Map View"), onTap: () => Navigator.pop(context)),
 
-          // 🚀 SIDEBAR LOGIC: Separates guests from real users
           if (isRealUser) ...[
             ListTile(leading: const Icon(Icons.favorite, color: Colors.redAccent), title: const Text("Favourite Trips"), onTap: () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (context) => const FavoritesScreen())); }),
             const Spacer(),
-            ListTile(leading: const Icon(Icons.logout, color: Colors.redAccent), title: const Text("Logout"), onTap: () { context.read<RotationProvider>().stopTracking(); context.read<MapProvider>().resetMap(); auth.logout(); Navigator.pushNamedAndRemoveUntil(context, '/welcome', (route) => false); }),
+            ListTile(leading: const Icon(Icons.logout, color: Colors.redAccent), title: const Text("Logout"), onTap: () { context.read<RotationProvider>().stopTracking(); context.read<StationProvider>().resetMap(); context.read<DisplayInfoProvider>().clearTrackingVisuals(); user.logout(); Navigator.pushNamedAndRemoveUntil(context, '/welcome', (route) => false); }),
           ] else ...[
             ListTile(leading: const Icon(Icons.login, color: Colors.green), title: const Text("Login"), onTap: () => Navigator.pushNamed(context, '/login')),
             ListTile(leading: const Icon(Icons.person_add, color: Colors.blue), title: const Text("Sign Up"), onTap: () => Navigator.pushNamed(context, '/signup')),
             const Spacer(),
-            ListTile(leading: const Icon(Icons.arrow_back, color: Colors.grey), title: const Text("Back to Welcome"), onTap: () { context.read<RotationProvider>().stopTracking(); context.read<MapProvider>().resetMap(); auth.logout(); Navigator.pushNamedAndRemoveUntil(context, '/welcome', (route) => false); }),
+            ListTile(leading: const Icon(Icons.arrow_back, color: Colors.grey), title: const Text("Back to Welcome"), onTap: () { context.read<RotationProvider>().stopTracking(); context.read<StationProvider>().resetMap(); context.read<DisplayInfoProvider>().clearTrackingVisuals(); user.logout(); Navigator.pushNamedAndRemoveUntil(context, '/welcome', (route) => false); }),
           ],
           const SizedBox(height: 20),
         ],
@@ -421,14 +397,14 @@ class _BusMapScreenState extends State<BusMapScreen> with TickerProviderStateMix
     );
   }
 
-  Widget _buildRouteHeader(MapProvider provider) {
+  Widget _buildRouteHeader(StationProvider stationProvider, DisplayInfoProvider displayProvider) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 15)]),
       child: Column(mainAxisSize: MainAxisSize.min, children: [
-        _buildAutocompleteInput(hint: "From Station", icon: Icons.circle_outlined, color: Colors.green, stations: provider.allStations, onSelected: (s) => setState(() => _startStation = s)),
+        _buildAutocompleteInput(hint: "From Station", icon: Icons.circle_outlined, color: Colors.green, stations: stationProvider.allStations, onSelected: (s) => setState(() => _startStation = s)),
         const SizedBox(height: 8), const Divider(), const SizedBox(height: 8),
-        _buildAutocompleteInput(hint: "To Station", icon: Icons.location_on, color: Colors.redAccent, stations: provider.allStations, onSelected: (s) => setState(() => _endStation = s)),
+        _buildAutocompleteInput(hint: "To Station", icon: Icons.location_on, color: Colors.redAccent, stations: stationProvider.allStations, onSelected: (s) => setState(() => _endStation = s)),
         const SizedBox(height: 16),
         SizedBox(width: double.infinity, child: ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
@@ -436,7 +412,7 @@ class _BusMapScreenState extends State<BusMapScreen> with TickerProviderStateMix
               if (_startStation != null && _endStation != null) {
                 setState(() { _isRouteHeaderVisible = false; _isPlanningRoute = false; });
                 showModalBottomSheet(context: context, isScrollControlled: true, backgroundColor: Colors.transparent, builder: (context) => TripListSheet(stationName: "From ${_startStation!.nameFr} to ${_endStation!.nameFr}", stationId: _startStation!.id));
-                provider.fetchTripsForStation(_startStation!.id);
+                displayProvider.fetchTripsForStation(_startStation!.id);
               } else { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Please select stations."))); }
             },
             child: const Text("Find Trips", style: TextStyle(color: Colors.white))
