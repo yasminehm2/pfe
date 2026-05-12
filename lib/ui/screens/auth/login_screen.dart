@@ -32,7 +32,6 @@ class _LoginScreenState extends State<LoginScreen> {
         final stationProvider = context.read<StationProvider>();
         final displayProvider = context.read<DisplayInfoProvider>();
 
-        // 🧹 PREPARE THE MAP AND TRACKING VISUALS
         stationProvider.resetMap();
         displayProvider.clearTrackingVisuals();
         stationProvider.updateCenter(location);
@@ -44,20 +43,14 @@ class _LoginScreenState extends State<LoginScreen> {
         Navigator.pushNamedAndRemoveUntil(context, '/map', (route) => false);
       }
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-                content: Text("Login failed. Check your credentials."),
-                backgroundColor: Colors.redAccent
-            )
-        );
-      }
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Login failed."), backgroundColor: Colors.redAccent));
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final isLoading = context.watch<UserProvider>().isLoading;
+    final primaryColor = Theme.of(context).colorScheme.primary; // 🚀 Extracting theme!
 
     return Scaffold(
       appBar: AppBar(backgroundColor: Colors.transparent, elevation: 0),
@@ -67,18 +60,14 @@ class _LoginScreenState extends State<LoginScreen> {
           key: _formKey,
           child: Column(
             children: [
-              const Icon(Icons.account_circle, size: 80, color: Colors.blueAccent),
+              Icon(Icons.account_circle, size: 80, color: primaryColor), // 🚀 Using Theme!
               const SizedBox(height: 10),
               const Text("Welcome Back", style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold)),
               const SizedBox(height: 40),
 
               TextFormField(
                 controller: _emailController,
-                decoration: InputDecoration(
-                    labelText: "Email",
-                    prefixIcon: const Icon(Icons.email),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))
-                ),
+                decoration: InputDecoration(labelText: "Email", prefixIcon: const Icon(Icons.email)),
                 validator: (val) => val!.isEmpty ? "Enter email" : null,
               ),
               const SizedBox(height: 20),
@@ -87,20 +76,12 @@ class _LoginScreenState extends State<LoginScreen> {
                 controller: _passwordController,
                 obscureText: !_isPasswordVisible,
                 decoration: InputDecoration(
-                    labelText: "Password",
-                    prefixIcon: const Icon(Icons.lock),
-                    suffixIcon: IconButton(
-                      icon: Icon(
-                        _isPasswordVisible ? Icons.visibility : Icons.visibility_off,
-                        color: Colors.grey,
-                      ),
-                      onPressed: () {
-                        setState(() {
-                          _isPasswordVisible = !_isPasswordVisible;
-                        });
-                      },
-                    ),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))
+                  labelText: "Password",
+                  prefixIcon: const Icon(Icons.lock),
+                  suffixIcon: IconButton(
+                    icon: Icon(_isPasswordVisible ? Icons.visibility : Icons.visibility_off, color: Colors.grey),
+                    onPressed: () => setState(() => _isPasswordVisible = !_isPasswordVisible),
+                  ),
                 ),
                 validator: (val) => val!.length < 6 ? "Minimum 6 chars" : null,
               ),
@@ -109,12 +90,9 @@ class _LoginScreenState extends State<LoginScreen> {
               isLoading
                   ? const CircularProgressIndicator()
                   : ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                      minimumSize: const Size(double.infinity, 55),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))
-                  ),
+                // 🚀 All manual styling removed! AppTheme takes over completely!
                   onPressed: _handleLogin,
-                  child: const Text("Sign In", style: TextStyle(fontSize: 18))
+                  child: const Text("Sign In")
               ),
             ],
           ),

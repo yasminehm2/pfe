@@ -2,7 +2,7 @@ class ApiConstants {
   // 🏠 THE HOME BASE:
   // This is the IP address of your computer running the Spring Boot backend.
   // 10.26.12.7 is your local network address, and 8080 is the default Spring port.
-  static const String baseUrl = "http://192.168.100.13:8080/api";
+  static const String baseUrl = "http://192.168.100.8:8080/api";
   // Quick lookup to prevent unnecessary GPS requests
   static const String checkEmail = "$baseUrl/users/check-email";
   static const String login = "$baseUrl/users/login";

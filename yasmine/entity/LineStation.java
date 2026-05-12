@@ -3,21 +3,23 @@ package org.yasmine.entity;
 import jakarta.persistence.*;
 import lombok.*;
 
-@Entity // Tells Java: "This class is a database table."
-@Table(name = "line_station") // The table is named "line_station".
-@Data // Automatically creates Getters, Setters, etc.
-@NoArgsConstructor // Empty constructor.
-@AllArgsConstructor // Full constructor.
-@Builder // Allows you to build objects easily.
+@Entity
+@Table(name = "line_station")
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
+// 🚀 NEW: Tells JPA to use our custom class as the composite primary key
+@IdClass(LineStationId.class) 
 public class LineStation {
 
-    @Id // The unique Primary Key for this specific row.
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
-
+    // 🚀 NEW: This is now part 1 of the Primary Key
+    @Id 
     @Column(name = "line_id", nullable = false)
     private String lineId;
 
+    // 🚀 NEW: This is now part 2 of the Primary Key
+    @Id 
     @Column(name = "station_id", nullable = false)
     private String stationId;
 
@@ -26,7 +28,6 @@ public class LineStation {
     private Integer stationOrder;
 
     // 🚀 UPDATED: How many total minutes from the FIRST station on the line to this one?
-    // (For the 1st station, this will be 0. For the 2nd it might be 5. For the 3rd, 12, etc.)
     @Column(name = "minutes_from_start")
     private Integer minutesFromStartStation;
 
@@ -35,7 +36,7 @@ public class LineStation {
     @JoinColumn(
             name = "line_id",
             referencedColumnName = "id",
-            insertable = false,
+            insertable = false, // Must be false because the field is already an @Id above
             updatable = false
     )
     @ToString.Exclude
@@ -47,7 +48,7 @@ public class LineStation {
     @JoinColumn(
             name = "station_id",
             referencedColumnName = "id",
-            insertable = false,
+            insertable = false, // Must be false because the field is already an @Id above
             updatable = false
     )
     @ToString.Exclude

@@ -19,38 +19,48 @@ class _ArrivalAlertBannerState extends State<ArrivalAlertBanner> {
   @override
   Widget build(BuildContext context) {
     final update = context.watch<RotationProvider>().currentUpdate;
+    final primaryColor = Theme.of(context).colorScheme.primary;
 
-    // Reset the flag if the bus is no longer near (in case of route updates)
-    if (update == null || !update.arrivalAlert) {
+    if (update == null) {
+      _hasShownAlert = false;
+      return const SizedBox.shrink();
+    }
+
+    // 🚀 THE FIX: Frontend Override!
+    // We check if ETA is 5 minutes or less, ignoring the backend's arrivalAlert boolean if it's wrong.
+    final bool isBusNear = update.arrivalAlert || update.etaMinutes <= 5.0;
+
+    // Reset the flag if the bus is no longer near (e.g., user tracked a different bus)
+    if (!isBusNear) {
       _hasShownAlert = false;
       return const SizedBox.shrink();
     }
 
     // Trigger the pop-out if it hasn't been shown yet for this arrival
-    if (update.arrivalAlert && !_hasShownAlert) {
+    if (isBusNear && !_hasShownAlert) {
       _hasShownAlert = true;
 
-      // We use addPostFrameCallback to trigger the dialog after the build phase
+      // We use addPostFrameCallback to trigger the dialog safely after the build phase
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        _showArrivalDialog(context, update.etaMinutes);
+        _showArrivalDialog(context, update.etaMinutes, primaryColor);
       });
     }
 
     return const SizedBox.shrink();
   }
 
-  void _showArrivalDialog(BuildContext context, double eta) {
+  void _showArrivalDialog(BuildContext context, double eta, Color primaryColor) {
     showDialog(
       context: context,
       barrierDismissible: false, // User must acknowledge by pressing OK
       builder: (BuildContext context) {
         return AlertDialog(
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-          title: const Row(
+          title: Row(
             children: [
-              Icon(Icons.notification_important, color: Colors.orangeAccent),
-              SizedBox(width: 10),
-              Text("Bus Arriving!"),
+              Icon(Icons.notification_important, color: primaryColor), // 🚀 Using Theme!
+              const SizedBox(width: 10),
+              const Text("Bus Arriving!"),
             ],
           ),
           content: Text(
@@ -60,9 +70,9 @@ class _ArrivalAlertBannerState extends State<ArrivalAlertBanner> {
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(),
-              child: const Text(
+              child: Text(
                 "OK",
-                style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blueAccent),
+                style: TextStyle(fontWeight: FontWeight.bold, color: primaryColor), // 🚀 Using Theme!
               ),
             ),
           ],

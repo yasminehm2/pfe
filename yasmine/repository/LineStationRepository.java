@@ -3,6 +3,8 @@ package org.yasmine.repository;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 import org.yasmine.entity.LineStation;
+import org.yasmine.entity.LineStationId;
+
 import java.util.List;
 
 /**
@@ -10,7 +12,7 @@ import java.util.List;
  * and what order they appear in.
  */
 @Repository // Tells Spring: "This is the data office for the line-to-station connections."
-public interface LineStationRepository extends JpaRepository<LineStation, Long> {
+public interface LineStationRepository extends JpaRepository<LineStation, LineStationId> {
 
     /**
      * 💡 MAGIC METHOD: "Get the Route Map"

@@ -88,6 +88,10 @@ class RotationProvider extends ChangeNotifier {
       // Ensure we haven't stopped tracking or switched trips while the internet request was traveling
       if (_activeRotationId != rotationId) return;
 
+      // 🚀 DEBUG CONSOLE: Watch your console when testing!
+      // It will now prove to you exactly what ETA is coming from Spring Boot.
+      debugPrint("🚌 LIVE ETA: ${update.etaMinutes} mins | Backend Alert Flag: ${update.arrivalAlert}");
+
       _currentUpdate = update;
       _errorMessage = null;
     } catch (e) {

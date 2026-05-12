@@ -15,16 +15,11 @@ class FavoritesScreen extends StatelessWidget {
     final displayProvider = context.watch<DisplayInfoProvider>();
     final stationProvider = context.read<StationProvider>();
     final userProvider = context.watch<UserProvider>();
+    final primaryColor = Theme.of(context).colorScheme.primary;
 
     return Scaffold(
-      backgroundColor: Colors.grey[100],
       appBar: AppBar(
-        title: const Text("My Favourite Trips",
-            style: TextStyle(fontWeight: FontWeight.bold)),
-        backgroundColor: Colors.white,
-        foregroundColor: Colors.black,
-        elevation: 0,
-        centerTitle: true,
+        title: const Text("My Favourite Trips", style: TextStyle(fontWeight: FontWeight.bold)),
       ),
       body: displayProvider.favoriteTrips.isEmpty
           ? _buildEmptyState()
@@ -37,8 +32,7 @@ class FavoritesScreen extends StatelessWidget {
           return Card(
             elevation: 3,
             margin: const EdgeInsets.only(bottom: 16),
-            shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16)),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
             child: Column(
               children: [
                 ExpansionTile(
@@ -51,52 +45,29 @@ class FavoritesScreen extends StatelessWidget {
                   shape: const Border(),
                   leading: CircleAvatar(
                     radius: 25,
-                    backgroundColor: Colors.blue[900],
-                    child: Text(
-                      trip.lineNumber ?? "?",
-                      style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold),
-                    ),
+                    backgroundColor: primaryColor, // 🚀 Theme!
+                    child: Text(trip.lineNumber ?? "?", style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
                   ),
-                  title: Text(
-                    "Departure: ${trip.departureTime}",
-                    style: const TextStyle(
-                        fontSize: 17, fontWeight: FontWeight.bold),
-                  ),
+                  title: Text("Departure: ${trip.departureTime}", style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
                   subtitle: Text("Bus: ${trip.busPlate}"),
                   children: [
                     Padding(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 10),
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text(
-                            "STATION SEQUENCE:",
-                            style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.blueAccent),
-                          ),
+                          Text("STATION SEQUENCE:", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: primaryColor)), // 🚀 Theme!
                           const SizedBox(height: 8),
                           if (displayProvider.isLoading && displayProvider.currentItinerary.isEmpty)
                             const LinearProgressIndicator()
                           else
                             Wrap(
                               children: displayProvider.currentItinerary.isNotEmpty
-                                  ? displayProvider.currentItinerary
-                                  .asMap()
-                                  .entries
-                                  .map((entry) {
+                                  ? displayProvider.currentItinerary.asMap().entries.map((entry) {
                                 int idx = entry.key;
                                 var station = entry.value;
                                 bool isLast = idx == displayProvider.currentItinerary.length - 1;
-                                return Text(
-                                  isLast ? station.nameFr : "${station.nameFr} - ",
-                                  style: TextStyle(color: Colors.grey[800], fontSize: 13),
-                                );
+                                return Text(isLast ? station.nameFr : "${station.nameFr} - ", style: TextStyle(color: Colors.grey[800], fontSize: 13));
                               }).toList()
                                   : [const Text("Tap to load sequence...", style: TextStyle(fontStyle: FontStyle.italic))],
                             ),
@@ -108,10 +79,7 @@ class FavoritesScreen extends StatelessWidget {
                 ),
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: Colors.grey[50],
-                    borderRadius: const BorderRadius.vertical(bottom: Radius.circular(16)),
-                  ),
+                  decoration: BoxDecoration(color: Colors.grey[50], borderRadius: const BorderRadius.vertical(bottom: Radius.circular(16))),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
@@ -119,15 +87,24 @@ class FavoritesScreen extends StatelessWidget {
                         icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
                         onPressed: () => displayProvider.toggleFavorite(trip),
                       ),
-                      ElevatedButton.icon(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.blue[800],
-                          foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      const SizedBox(width: 8), // Adds a small gap
+
+                      // 🚀 THE FIX: Expanded widget prevents the BoxConstraints crash
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          style: ElevatedButton.styleFrom(
+                            // This overrides the 'infinity' width from AppTheme specifically for this row
+                            minimumSize: const Size(0, 45),
+                            padding: const EdgeInsets.symmetric(horizontal: 8),
+                          ),
+                          onPressed: () => _showStationPicker(context, trip, displayProvider, stationProvider, userProvider, primaryColor),
+                          icon: const Icon(Icons.location_searching, size: 18),
+                          label: const Text(
+                            "Select & Track",
+                            style: TextStyle(fontSize: 13),
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ),
-                        onPressed: () => _showStationPicker(context, trip, displayProvider, stationProvider, userProvider),
-                        icon: const Icon(Icons.location_searching),
-                        label: const Text("Select Station & Track"),
                       ),
                     ],
                   ),
@@ -140,7 +117,7 @@ class FavoritesScreen extends StatelessWidget {
     );
   }
 
-  void _showStationPicker(BuildContext context, DisplayInfoModel trip, DisplayInfoProvider displayProvider, StationProvider stationProvider, UserProvider userProvider) async {
+  void _showStationPicker(BuildContext context, DisplayInfoModel trip, DisplayInfoProvider displayProvider, StationProvider stationProvider, UserProvider userProvider, Color primaryColor) async {
     if (displayProvider.currentItinerary.isEmpty) {
       final itinerary = await displayProvider.fetchTripItinerary(trip.id!);
       stationProvider.fetchRoadAlignedPath(itinerary);
@@ -168,7 +145,7 @@ class FavoritesScreen extends StatelessWidget {
                   itemBuilder: (context, index) {
                     final station = displayProvider.currentItinerary[index];
                     return ListTile(
-                      leading: const Icon(Icons.radio_button_checked, color: Colors.blue),
+                      leading: Icon(Icons.radio_button_checked, color: primaryColor), // 🚀 Theme!
                       title: Text(station.nameFr),
                       subtitle: Text(station.nameAr),
                       onTap: () async {
@@ -176,20 +153,13 @@ class FavoritesScreen extends StatelessWidget {
                         Navigator.pop(context);
 
                         displayProvider.setTrackedStation(station.id);
-
                         final trackingProvider = context.read<RotationProvider>();
                         final String userId = userProvider.currentUser?.id ?? "GUEST";
 
-                        bool success = await trackingProvider.activateAndTrack(
-                            trip.id!,
-                            station.id,
-                            userId
-                        );
+                        bool success = await trackingProvider.activateAndTrack(trip.id!, station.id, userId);
 
                         if (success) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text("Tracking ${trip.lineNumber} from ${station.nameFr}")),
-                          );
+                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Tracking ${trip.lineNumber} from ${station.nameFr}")));
                         }
                       },
                     );

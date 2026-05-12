@@ -29,7 +29,8 @@ public class SecurityConfig {
             .csrf(csrf -> csrf.disable()) 
             .cors(cors -> cors.configurationSource(corsConfigurationSource()))
             .authorizeHttpRequests(auth -> auth
-                .requestMatchers("/api/auth/**").permitAll() 
+                // 🚀 THE FIX: Changed from /api/auth/** to /api/users/**
+                .requestMatchers("/api/users/**").permitAll() 
                 .requestMatchers("/api/stations/**").permitAll()  
                 .requestMatchers("/api/tracking/**").permitAll()  
                 .requestMatchers("/error").permitAll() 
@@ -39,12 +40,10 @@ public class SecurityConfig {
             .sessionManagement(session -> session
                 .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
             )
-            // 🚀 ADD THE FILTER HERE: Tell Spring to run your JWT check before standard login
             .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
     }
-
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();

@@ -44,7 +44,6 @@ class _BusMapScreenState extends State<BusMapScreen> with TickerProviderStateMix
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) return;
-      // 🚀 Reset both providers
       context.read<StationProvider>().resetMap();
       context.read<DisplayInfoProvider>().clearTrackingVisuals();
 
@@ -65,9 +64,7 @@ class _BusMapScreenState extends State<BusMapScreen> with TickerProviderStateMix
     serviceEnabled = await Geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("GPS is disabled. Please turn it on.")),
-      );
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("GPS is disabled. Please turn it on.")));
       return;
     }
 
@@ -91,27 +88,30 @@ class _BusMapScreenState extends State<BusMapScreen> with TickerProviderStateMix
 
   void _showPermissionDialog({bool isPermanent = false}) {
     showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        title: const Text("Location Required"),
-        content: Text(isPermanent
-            ? "You have permanently disabled location. You must allow it in your phone settings to use the map."
-            : "To see bus stops near you, you have to allow location permission."),
-        actions: [
-          TextButton(
-            onPressed: () async {
-              Navigator.pop(context);
-              if (isPermanent) {
-                await Geolocator.openAppSettings();
-              } else {
-                await _handleLocationPermission();
-              }
-            },
-            child: const Text("OK", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blueAccent)),
-          ),
-        ],
-      ),
+        context: context,
+        barrierDismissible: false,
+        builder: (context) {
+          final primaryColor = Theme.of(context).colorScheme.primary;
+          return AlertDialog(
+            title: const Text("Location Required"),
+            content: Text(isPermanent
+                ? "You have permanently disabled location. You must allow it in your phone settings to use the map."
+                : "To see bus stops near you, you have to allow location permission."),
+            actions: [
+              TextButton(
+                onPressed: () async {
+                  Navigator.pop(context);
+                  if (isPermanent) {
+                    await Geolocator.openAppSettings();
+                  } else {
+                    await _handleLocationPermission();
+                  }
+                },
+                child: Text("OK", style: TextStyle(fontWeight: FontWeight.bold, color: primaryColor)),
+              ),
+            ],
+          );
+        }
     );
   }
 
@@ -129,10 +129,7 @@ class _BusMapScreenState extends State<BusMapScreen> with TickerProviderStateMix
     _debounceTimer = Timer(const Duration(milliseconds: 800), () {
       if (!mounted) return;
       if (!_isPlanningRoute) {
-        context.read<StationProvider>().fetchNearbyStations(
-          camera.center.latitude,
-          camera.center.longitude,
-        );
+        context.read<StationProvider>().fetchNearbyStations(camera.center.latitude, camera.center.longitude);
       }
     });
   }
@@ -144,22 +141,21 @@ class _BusMapScreenState extends State<BusMapScreen> with TickerProviderStateMix
     final displayProvider = context.watch<DisplayInfoProvider>();
     final trackingProvider = context.watch<RotationProvider>();
 
-    // 🛰️ AUTO-FOLLOW ON START
+    // 🚀 We extract your Theme colors here!
+    final colorScheme = Theme.of(context).colorScheme;
+    final primaryColor = colorScheme.primary;
+    final secondaryColor = colorScheme.secondary;
+
     if (displayProvider.cameraMoveTrigger > _lastCameraTrigger) {
       _lastCameraTrigger = displayProvider.cameraMoveTrigger;
       _isFollowingBus = true;
       if (displayProvider.liveBusLocation != null) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          _mapController.move(displayProvider.liveBusLocation!, 15.5);
-        });
+        WidgetsBinding.instance.addPostFrameCallback((_) => _mapController.move(displayProvider.liveBusLocation!, 15.5));
       }
     }
 
-    // 🛰️ CONTINUOUS AUTO-FOLLOW
     if (trackingProvider.isTracking && _isFollowingBus && displayProvider.liveBusLocation != null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        _mapController.move(displayProvider.liveBusLocation!, 15.5);
-      });
+      WidgetsBinding.instance.addPostFrameCallback((_) => _mapController.move(displayProvider.liveBusLocation!, 15.5));
     }
 
     stationProvider.onStationSelected = (stationId, stationName) {
@@ -178,7 +174,7 @@ class _BusMapScreenState extends State<BusMapScreen> with TickerProviderStateMix
 
     return Scaffold(
       key: _scaffoldKey,
-      drawer: _buildDrawer(userProvider),
+      drawer: _buildDrawer(userProvider, primaryColor, secondaryColor),
       body: GestureDetector(
         onTap: () => _searchFocusNode.unfocus(),
         behavior: HitTestBehavior.opaque,
@@ -191,9 +187,7 @@ class _BusMapScreenState extends State<BusMapScreen> with TickerProviderStateMix
                 initialZoom: 14.5,
                 onPositionChanged: (position, hasGesture) {
                   _onMapMoved(position);
-                  if (hasGesture && _isFollowingBus) {
-                    setState(() => _isFollowingBus = false);
-                  }
+                  if (hasGesture && _isFollowingBus) setState(() => _isFollowingBus = false);
                   if (hasGesture) _searchFocusNode.unfocus();
                 },
               ),
@@ -208,7 +202,7 @@ class _BusMapScreenState extends State<BusMapScreen> with TickerProviderStateMix
                     polylines: [
                       Polyline(
                         points: stationProvider.routePoints,
-                        color: Colors.blueAccent.withOpacity(0.8),
+                        color: primaryColor.withOpacity(0.8), // 🚀 Using Theme!
                         strokeWidth: 6.0,
                       ),
                     ],
@@ -234,9 +228,9 @@ class _BusMapScreenState extends State<BusMapScreen> with TickerProviderStateMix
                               Container(
                                 padding: const EdgeInsets.all(4),
                                 decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8), boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 4)]),
-                                child: const Icon(Icons.directions_bus, color: Colors.blue, size: 24),
+                                child: Icon(Icons.directions_bus, color: primaryColor, size: 24), // 🚀 Using Theme!
                               ),
-                              const Icon(Icons.arrow_drop_down, color: Colors.blue, size: 20),
+                              Icon(Icons.arrow_drop_down, color: primaryColor, size: 20), // 🚀 Using Theme!
                             ],
                           ),
                         ),
@@ -247,13 +241,13 @@ class _BusMapScreenState extends State<BusMapScreen> with TickerProviderStateMix
             ),
 
             if (stationProvider.isLoading || displayProvider.isLoading)
-              const Center(child: CircularProgressIndicator(color: Colors.blueAccent)),
+              Center(child: CircularProgressIndicator(color: primaryColor)), // 🚀 Using Theme!
 
             const ArrivalAlertBanner(),
 
             Positioned(
               top: MediaQuery.of(context).padding.top + 10, left: 15, right: 15,
-              child: _isRouteHeaderVisible ? _buildRouteHeader(stationProvider, displayProvider) : _buildFloatingSearchBar(stationProvider, displayProvider),
+              child: _isRouteHeaderVisible ? _buildRouteHeader(stationProvider, displayProvider, primaryColor) : _buildFloatingSearchBar(stationProvider, displayProvider, primaryColor),
             ),
 
             Positioned(
@@ -270,20 +264,15 @@ class _BusMapScreenState extends State<BusMapScreen> with TickerProviderStateMix
                         backgroundColor: _isFollowingBus ? Colors.orange : Colors.white,
                         onPressed: () {
                           setState(() => _isFollowingBus = !_isFollowingBus);
-                          if (_isFollowingBus) {
-                            _mapController.move(displayProvider.liveBusLocation!, 15.5);
-                          }
+                          if (_isFollowingBus) _mapController.move(displayProvider.liveBusLocation!, 15.5);
                         },
-                        child: Icon(
-                          _isFollowingBus ? Icons.videocam : Icons.videocam_off,
-                          color: _isFollowingBus ? Colors.white : Colors.orange,
-                        ),
+                        child: Icon(_isFollowingBus ? Icons.videocam : Icons.videocam_off, color: _isFollowingBus ? Colors.white : Colors.orange),
                       ),
                     ),
 
                   FloatingActionButton(
                     heroTag: "route_toggle", mini: true,
-                    backgroundColor: _isPlanningRoute ? Colors.redAccent : Colors.blueAccent,
+                    backgroundColor: _isPlanningRoute ? Colors.redAccent : primaryColor, // 🚀 Using Theme!
                     onPressed: () {
                       setState(() {
                         if (_isPlanningRoute) {
@@ -298,7 +287,7 @@ class _BusMapScreenState extends State<BusMapScreen> with TickerProviderStateMix
                   FloatingActionButton(
                     heroTag: "my_gps", mini: true, backgroundColor: Colors.white,
                     onPressed: () => _handleLocationPermission(),
-                    child: const Icon(Icons.my_location, color: Colors.blueAccent),
+                    child: Icon(Icons.my_location, color: primaryColor), // 🚀 Using Theme!
                   ),
                 ],
               ),
@@ -328,7 +317,7 @@ class _BusMapScreenState extends State<BusMapScreen> with TickerProviderStateMix
     );
   }
 
-  Widget _buildFloatingSearchBar(StationProvider stationProvider, DisplayInfoProvider displayProvider) {
+  Widget _buildFloatingSearchBar(StationProvider stationProvider, DisplayInfoProvider displayProvider, Color primaryColor) {
     return Material(
       color: Colors.transparent,
       child: Container(
@@ -347,7 +336,7 @@ class _BusMapScreenState extends State<BusMapScreen> with TickerProviderStateMix
             decoration: InputDecoration(
                 hintText: "Search stations...", border: InputBorder.none,
                 prefixIcon: IconButton(icon: const Icon(Icons.menu), onPressed: () => _scaffoldKey.currentState?.openDrawer()),
-                suffixIcon: const Padding(padding: EdgeInsets.only(right: 12), child: Icon(Icons.search, color: Colors.blueAccent)),
+                suffixIcon: Padding(padding: const EdgeInsets.only(right: 12), child: Icon(Icons.search, color: primaryColor)), // 🚀 Using Theme!
                 contentPadding: const EdgeInsets.symmetric(vertical: 15)
             ),
           ),
@@ -356,38 +345,38 @@ class _BusMapScreenState extends State<BusMapScreen> with TickerProviderStateMix
     );
   }
 
-  Widget _buildDrawer(UserProvider user) {
+  Widget _buildDrawer(UserProvider user, Color primaryColor, Color secondaryColor) {
     final bool isRealUser = user.isRealUser;
     return Drawer(
       child: Column(
         children: [
           if (isRealUser)
             DrawerHeader(
-              decoration: const BoxDecoration(gradient: LinearGradient(colors: [Color(0xFF1976D2), Color(0xFF64B5F6)])),
+              decoration: BoxDecoration(gradient: LinearGradient(colors: [primaryColor, secondaryColor])), // 🚀 Using Theme!
               child: SizedBox(width: double.infinity, child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.end, children: [
-                const CircleAvatar(radius: 32, backgroundColor: Colors.white, child: Icon(Icons.person, size: 40, color: Colors.blueAccent)),
+                CircleAvatar(radius: 32, backgroundColor: Colors.white, child: Icon(Icons.person, size: 40, color: primaryColor)),
                 const SizedBox(height: 12),
                 Text(user.displayName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Colors.white)),
                 Text(user.displayEmail, style: const TextStyle(fontSize: 14, color: Colors.white70)),
               ])),
             )
           else
-            const UserAccountsDrawerHeader(
-              decoration: BoxDecoration(gradient: LinearGradient(colors: [Color(0xFF1976D2), Color(0xFF64B5F6)])),
-              accountName: Text("Guest Mode", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-              accountEmail: Text("Sfax Public Transport"),
-              currentAccountPicture: CircleAvatar(backgroundColor: Colors.white, child: Icon(Icons.person_outline, size: 40, color: Colors.blueAccent)),
+            UserAccountsDrawerHeader(
+              decoration: BoxDecoration(gradient: LinearGradient(colors: [primaryColor, secondaryColor])), // 🚀 Using Theme!
+              accountName: const Text("Guest Mode", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+              accountEmail: const Text("Sfax Public Transport"),
+              currentAccountPicture: CircleAvatar(backgroundColor: Colors.white, child: Icon(Icons.person_outline, size: 40, color: primaryColor)),
             ),
 
-          ListTile(leading: const Icon(Icons.map_outlined, color: Colors.blueAccent), title: const Text("Map View"), onTap: () => Navigator.pop(context)),
+          ListTile(leading: Icon(Icons.map_outlined, color: primaryColor), title: const Text("Map View"), onTap: () => Navigator.pop(context)),
 
           if (isRealUser) ...[
             ListTile(leading: const Icon(Icons.favorite, color: Colors.redAccent), title: const Text("Favourite Trips"), onTap: () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (context) => const FavoritesScreen())); }),
             const Spacer(),
             ListTile(leading: const Icon(Icons.logout, color: Colors.redAccent), title: const Text("Logout"), onTap: () { context.read<RotationProvider>().stopTracking(); context.read<StationProvider>().resetMap(); context.read<DisplayInfoProvider>().clearTrackingVisuals(); user.logout(); Navigator.pushNamedAndRemoveUntil(context, '/welcome', (route) => false); }),
           ] else ...[
-            ListTile(leading: const Icon(Icons.login, color: Colors.green), title: const Text("Login"), onTap: () => Navigator.pushNamed(context, '/login')),
-            ListTile(leading: const Icon(Icons.person_add, color: Colors.blue), title: const Text("Sign Up"), onTap: () => Navigator.pushNamed(context, '/signup')),
+            ListTile(leading: Icon(Icons.login, color: primaryColor), title: const Text("Login"), onTap: () => Navigator.pushNamed(context, '/login')),
+            ListTile(leading: Icon(Icons.person_add, color: primaryColor), title: const Text("Sign Up"), onTap: () => Navigator.pushNamed(context, '/signup')),
             const Spacer(),
             ListTile(leading: const Icon(Icons.arrow_back, color: Colors.grey), title: const Text("Back to Welcome"), onTap: () { context.read<RotationProvider>().stopTracking(); context.read<StationProvider>().resetMap(); context.read<DisplayInfoProvider>().clearTrackingVisuals(); user.logout(); Navigator.pushNamedAndRemoveUntil(context, '/welcome', (route) => false); }),
           ],
@@ -397,17 +386,17 @@ class _BusMapScreenState extends State<BusMapScreen> with TickerProviderStateMix
     );
   }
 
-  Widget _buildRouteHeader(StationProvider stationProvider, DisplayInfoProvider displayProvider) {
+  Widget _buildRouteHeader(StationProvider stationProvider, DisplayInfoProvider displayProvider, Color primaryColor) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 15)]),
       child: Column(mainAxisSize: MainAxisSize.min, children: [
-        _buildAutocompleteInput(hint: "From Station", icon: Icons.circle_outlined, color: Colors.green, stations: stationProvider.allStations, onSelected: (s) => setState(() => _startStation = s)),
+        _buildAutocompleteInput(hint: "From Station", icon: Icons.circle_outlined, color: primaryColor, stations: stationProvider.allStations, onSelected: (s) => setState(() => _startStation = s)),
         const SizedBox(height: 8), const Divider(), const SizedBox(height: 8),
         _buildAutocompleteInput(hint: "To Station", icon: Icons.location_on, color: Colors.redAccent, stations: stationProvider.allStations, onSelected: (s) => setState(() => _endStation = s)),
         const SizedBox(height: 16),
         SizedBox(width: double.infinity, child: ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+          // 🚀 Notice we removed style: ElevatedButton.styleFrom(...). It inherently uses AppTheme now!
             onPressed: () {
               if (_startStation != null && _endStation != null) {
                 setState(() { _isRouteHeaderVisible = false; _isPlanningRoute = false; });
@@ -415,7 +404,7 @@ class _BusMapScreenState extends State<BusMapScreen> with TickerProviderStateMix
                 displayProvider.fetchTripsForStation(_startStation!.id);
               } else { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Please select stations."))); }
             },
-            child: const Text("Find Trips", style: TextStyle(color: Colors.white))
+            child: const Text("Find Trips")
         )),
       ]),
     );

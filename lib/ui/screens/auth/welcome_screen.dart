@@ -28,7 +28,6 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
         stationProvider.resetMap();
         displayProvider.clearTrackingVisuals();
         stationProvider.updateCenter(location);
-
         Navigator.pushNamedAndRemoveUntil(context, '/map', (route) => false);
       }
     } catch (e) {
@@ -40,12 +39,17 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // 🚀 Extract theme colors
+    final colorScheme = Theme.of(context).colorScheme;
+    final primaryColor = colorScheme.primary;
+    final secondaryColor = colorScheme.secondary;
+
     return Scaffold(
       body: Container(
         width: double.infinity,
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           gradient: LinearGradient(
-            colors: [Color(0xFF1976D2), Color(0xFF64B5F6)],
+            colors: [primaryColor, secondaryColor], // 🚀 Using Theme!
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
           ),
@@ -55,20 +59,18 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
           children: [
             const Icon(Icons.directions_bus, size: 100, color: Colors.white),
             const SizedBox(height: 20),
-            const Text("Sfax Transport",
-                style: TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.bold)),
-            const Text("Your city, your rhythm.",
-                style: TextStyle(color: Colors.white70, fontSize: 16)),
+            const Text("Sfax Transport", style: TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.bold)),
+            const Text("Your city, your rhythm.", style: TextStyle(color: Colors.white70, fontSize: 16)),
 
             const SizedBox(height: 80),
 
-            _buildActionBtn("Login", Colors.white, Colors.blue.shade700,
-                    () => Navigator.pushNamed(context, '/login')),
+            // Using white background with Primary text
+            _buildActionBtn("Login", Colors.white, primaryColor, () => Navigator.pushNamed(context, '/login')),
 
             const SizedBox(height: 15),
 
-            _buildActionBtn("Sign Up", Colors.blue.shade900, Colors.white,
-                    () => Navigator.pushNamed(context, '/signup')),
+            // Using Primary background with White text (we make it slightly darker than the gradient)
+            _buildActionBtn("Sign Up", primaryColor.withOpacity(0.9), Colors.white, () => Navigator.pushNamed(context, '/signup')),
 
             const SizedBox(height: 30),
 
@@ -76,8 +78,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                 ? const CircularProgressIndicator(color: Colors.white)
                 : TextButton(
               onPressed: _handleGuestMode,
-              child: const Text("Continue as Guest",
-                  style: TextStyle(color: Colors.white, decoration: TextDecoration.underline)),
+              child: const Text("Continue as Guest", style: TextStyle(color: Colors.white, decoration: TextDecoration.underline)),
             ),
           ],
         ),
@@ -91,10 +92,11 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
       child: ElevatedButton(
         style: ElevatedButton.styleFrom(
             backgroundColor: bg,
+            foregroundColor: text,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))
         ),
         onPressed: action,
-        child: Text(label, style: TextStyle(color: text, fontSize: 18, fontWeight: FontWeight.bold)),
+        child: Text(label),
       ),
     );
   }

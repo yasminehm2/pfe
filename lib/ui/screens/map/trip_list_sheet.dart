@@ -25,6 +25,7 @@ class _TripListSheetState extends State<TripListSheet> {
     final displayProvider = context.watch<DisplayInfoProvider>();
     final stationProvider = context.watch<StationProvider>();
     final userProvider = context.watch<UserProvider>();
+    final primaryColor = Theme.of(context).colorScheme.primary;
 
     return Container(
       height: MediaQuery.of(context).size.height * 0.80,
@@ -38,47 +39,32 @@ class _TripListSheetState extends State<TripListSheet> {
           Container(
             width: 40,
             height: 4,
-            decoration: BoxDecoration(
-              color: Colors.grey[300],
-              borderRadius: BorderRadius.circular(10),
-            ),
+            decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(10)),
           ),
           ListTile(
             leading: _selectedTrip != null
-                ? IconButton(
-              icon: const Icon(Icons.arrow_back),
-              onPressed: () => setState(() => _selectedTrip = null),
-            )
+                ? IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => setState(() => _selectedTrip = null))
                 : const Icon(Icons.location_on, color: Colors.red),
             title: Text(
-              _selectedTrip == null
-                  ? widget.stationName
-                  : "Line ${_selectedTrip!.lineNumber} Itinerary",
+              _selectedTrip == null ? widget.stationName : "Line ${_selectedTrip!.lineNumber} Itinerary",
               style: const TextStyle(fontWeight: FontWeight.bold),
             ),
-            trailing: IconButton(
-              icon: const Icon(Icons.close),
-              onPressed: () => Navigator.pop(context),
-            ),
+            trailing: IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(context)),
           ),
           const Divider(),
           Expanded(
             child: _selectedTrip == null
-                ? _buildListView(displayProvider, stationProvider)
-                : _buildDetailView(_selectedTrip!, displayProvider, userProvider),
+                ? _buildListView(displayProvider, stationProvider, primaryColor)
+                : _buildDetailView(_selectedTrip!, displayProvider, userProvider, primaryColor),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildListView(DisplayInfoProvider displayProvider, StationProvider stationProvider) {
-    if (displayProvider.isLoading && displayProvider.selectedStationTrips.isEmpty) {
-      return const Center(child: CircularProgressIndicator());
-    }
-    if (displayProvider.selectedStationTrips.isEmpty) {
-      return const Center(child: Text("No active buses for this station."));
-    }
+  Widget _buildListView(DisplayInfoProvider displayProvider, StationProvider stationProvider, Color primaryColor) {
+    if (displayProvider.isLoading && displayProvider.selectedStationTrips.isEmpty) return const Center(child: CircularProgressIndicator());
+    if (displayProvider.selectedStationTrips.isEmpty) return const Center(child: Text("No active buses for this station."));
 
     return ListView.builder(
       padding: const EdgeInsets.all(15),
@@ -91,18 +77,11 @@ class _TripListSheetState extends State<TripListSheet> {
           elevation: isCancelled ? 0 : 2,
           color: isCancelled ? Colors.grey[100] : Colors.white,
           margin: const EdgeInsets.only(bottom: 10),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-            side: isCancelled ? BorderSide(color: Colors.grey[300]!) : BorderSide.none,
-          ),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: isCancelled ? BorderSide(color: Colors.grey[300]!) : BorderSide.none),
           child: ListTile(
-            onTap: isCancelled
-                ? null
-                : () async {
+            onTap: isCancelled ? null : () async {
               if (_selectedTrip?.id != trip.id) {
                 setState(() => _selectedTrip = trip);
-
-                // 🚀 THE FIX: Chain the itinerary to the road-path drawer
                 final itinerary = await displayProvider.fetchTripItinerary(trip.id!);
                 stationProvider.fetchRoadAlignedPath(itinerary);
                 displayProvider.triggerCameraToBus();
@@ -111,57 +90,29 @@ class _TripListSheetState extends State<TripListSheet> {
               }
             },
             leading: CircleAvatar(
-              backgroundColor: isCancelled ? Colors.grey[400] : Colors.blue[900],
-              child: Text(
-                trip.lineNumber ?? "?",
-                style: const TextStyle(color: Colors.white, fontSize: 12),
-              ),
+              backgroundColor: isCancelled ? Colors.grey[400] : primaryColor, // 🚀 Theme!
+              child: Text(trip.lineNumber ?? "?", style: const TextStyle(color: Colors.white, fontSize: 12)),
             ),
             title: Row(
               children: [
-                Text(
-                  "Departure: ${trip.departureTime}",
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: isCancelled ? Colors.grey[500] : Colors.black,
-                    decoration: isCancelled ? TextDecoration.lineThrough : null,
-                  ),
-                ),
+                Text("Departure: ${trip.departureTime}", style: TextStyle(fontWeight: FontWeight.bold, color: isCancelled ? Colors.grey[500] : Colors.black, decoration: isCancelled ? TextDecoration.lineThrough : null)),
                 if (isCancelled) ...[
                   const SizedBox(width: 8),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: Colors.red[50],
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: const Text(
-                      "CANCELLED",
-                      style: TextStyle(color: Colors.red, fontSize: 10, fontWeight: FontWeight.bold),
-                    ),
-                  ),
+                  Container(padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2), decoration: BoxDecoration(color: Colors.red[50], borderRadius: BorderRadius.circular(4)), child: const Text("CANCELLED", style: TextStyle(color: Colors.red, fontSize: 10, fontWeight: FontWeight.bold))),
                 ]
               ],
             ),
-            subtitle: Text(
-              isCancelled ? "Service Interrupted" : "Bus: ${trip.busPlate}",
-              style: TextStyle(color: isCancelled ? Colors.grey[400] : Colors.black54),
-            ),
-            trailing: isCancelled
-                ? Icon(Icons.block, color: Colors.red[300])
-                : const Icon(Icons.chevron_right),
+            subtitle: Text(isCancelled ? "Service Interrupted" : "Bus: ${trip.busPlate}", style: TextStyle(color: isCancelled ? Colors.grey[400] : Colors.black54)),
+            trailing: isCancelled ? Icon(Icons.block, color: Colors.red[300]) : const Icon(Icons.chevron_right),
           ),
         );
       },
     );
   }
 
-  Widget _buildDetailView(DisplayInfoModel trip, DisplayInfoProvider provider, UserProvider user) {
+  Widget _buildDetailView(DisplayInfoModel trip, DisplayInfoProvider provider, UserProvider user, Color primaryColor) {
     final bool isAuthenticated = user.currentUser != null;
-    final bool isGuest = !isAuthenticated ||
-        user.currentUser!.id.trim().isEmpty ||
-        user.currentUser!.id.toUpperCase().contains('GUEST');
-
+    final bool isGuest = !isAuthenticated || user.currentUser!.id.trim().isEmpty || user.currentUser!.id.toUpperCase().contains('GUEST');
     final bool isRealUser = !isGuest;
 
     return Column(
@@ -173,9 +124,9 @@ class _TripListSheetState extends State<TripListSheet> {
               const SizedBox(height: 10),
               _buildTripSummary(trip, provider, isRealUser),
 
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 20),
-                child: Text("STOPS SEQUENCE", style: TextStyle(color: Colors.blue, fontWeight: FontWeight.bold, letterSpacing: 1.1)),
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 20),
+                child: Text("STOPS SEQUENCE", style: TextStyle(color: primaryColor, fontWeight: FontWeight.bold, letterSpacing: 1.1)), // 🚀 Theme!
               ),
 
               if (provider.isLoading && provider.currentItinerary.isEmpty)
@@ -187,18 +138,15 @@ class _TripListSheetState extends State<TripListSheet> {
                   bool isLast = idx == provider.currentItinerary.length - 1;
 
                   String timeDisplay = "${stop.minutesFromStartStation ?? 0} min";
-                  if (stop.hasPassed) {
-                    timeDisplay = "Passed";
-                  } else if (stop.liveEtaMinutes != null) {
-                    timeDisplay = "${stop.liveEtaMinutes} min (Live)";
-                  }
+                  if (stop.hasPassed) timeDisplay = "Passed";
+                  else if (stop.liveEtaMinutes != null) timeDisplay = "${stop.liveEtaMinutes} min (Live)";
 
                   return Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Row(
                         children: [
-                          Icon(stop.hasPassed ? Icons.check_circle : Icons.radio_button_checked, size: 18, color: stop.hasPassed ? Colors.green : Colors.blue[800]),
+                          Icon(stop.hasPassed ? Icons.check_circle : Icons.radio_button_checked, size: 18, color: stop.hasPassed ? Colors.grey : primaryColor), // 🚀 Theme!
                           const SizedBox(width: 15),
                           Expanded(
                             child: Column(
@@ -211,15 +159,15 @@ class _TripListSheetState extends State<TripListSheet> {
                           ),
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                            decoration: BoxDecoration(color: stop.hasPassed ? Colors.green[50] : Colors.blue[50], borderRadius: BorderRadius.circular(12)),
-                            child: Text(timeDisplay, style: TextStyle(color: stop.hasPassed ? Colors.green : Colors.blue, fontWeight: FontWeight.bold, fontSize: 11)),
+                            decoration: BoxDecoration(color: stop.hasPassed ? Colors.grey[200] : primaryColor.withOpacity(0.1), borderRadius: BorderRadius.circular(12)), // 🚀 Theme!
+                            child: Text(timeDisplay, style: TextStyle(color: stop.hasPassed ? Colors.grey : primaryColor, fontWeight: FontWeight.bold, fontSize: 11)), // 🚀 Theme!
                           ),
                         ],
                       ),
                       if (!isLast)
                         Padding(
                           padding: const EdgeInsets.only(left: 8),
-                          child: Container(height: 30, width: 2, color: stop.hasPassed ? Colors.green[200] : Colors.blue[100]),
+                          child: Container(height: 30, width: 2, color: stop.hasPassed ? Colors.grey[300] : primaryColor.withOpacity(0.3)), // 🚀 Theme!
                         ),
                     ],
                   );
@@ -277,23 +225,15 @@ class _TripListSheetState extends State<TripListSheet> {
   Widget _buildTrackButton(DisplayInfoModel trip, UserProvider user, bool isGuest) {
     return Padding(
       padding: const EdgeInsets.all(20),
+      // 🚀 Removed the manual styling block! AppTheme dictates this is SORETRAS Green now.
       child: ElevatedButton(
-        style: ElevatedButton.styleFrom(
-          backgroundColor: Colors.green[700],
-          minimumSize: const Size(double.infinity, 55),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-        ),
         onPressed: () async {
           final String userId = isGuest ? "GUEST-TEMPORARY" : user.currentUser!.id;
-
           context.read<DisplayInfoProvider>().setTrackedStation(widget.stationId);
-
-          bool success = await Provider.of<RotationProvider>(context, listen: false)
-              .activateAndTrack(trip.id!, widget.stationId, userId);
-
+          bool success = await Provider.of<RotationProvider>(context, listen: false).activateAndTrack(trip.id!, widget.stationId, userId);
           if (success) Navigator.pop(context);
         },
-        child: const Text("CONFIRM & TRACK", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+        child: const Text("CONFIRM & TRACK"),
       ),
     );
   }
